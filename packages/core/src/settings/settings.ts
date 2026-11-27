@@ -101,9 +101,11 @@ export class SettingsStore {
   resolved() {
     const saved = readJson<Saved>(this.file, {});
     const configured = Object.hasOwn(saved, 'provider');
-    let provider = configured ? (saved.provider ?? null) : fromEnv(this.env);
-    let keyFromEnvironment = !configured;
-    if (configured && provider && 'apiKey' in provider && provider.apiKey === '') {
+    const forcedType = this.env.CATALYST_PROVIDER;
+    const switched = !!forcedType && forcedType !== saved.provider?.type;
+    let provider = configured && !switched ? (saved.provider ?? null) : fromEnv(this.env);
+    let keyFromEnvironment = false;
+    if (provider && provider.type !== 'claude-code') {
       const name = {
         anthropic: 'ANTHROPIC_API_KEY',
         openrouter: 'OPENROUTER_API_KEY',
@@ -113,8 +115,10 @@ export class SettingsStore {
         provider = { ...provider, apiKey: this.env[name]! };
         keyFromEnvironment = true;
       }
+      if (provider.type === 'openai-compatible' && this.env.OPENAI_BASE_URL)
+        provider = { ...provider, baseUrl: this.env.OPENAI_BASE_URL };
     }
-    const models = { ...defaults(provider), ...saved.models };
+    const models = { ...defaults(provider), ...(switched && saved.provider ? {} : saved.models) };
     models.fast = this.env.CATALYST_MODEL_FAST ?? models.fast;
     models.smart = this.env.CATALYST_MODEL_SMART ?? models.smart;
     const config = GlobalConfig.parse({
@@ -124,7 +128,7 @@ export class SettingsStore {
       models,
       outputLanguage: this.env.CATALYST_LANG ?? saved.outputLanguage,
     });
-    return { config, provider: config.provider, configured, keyFromEnvironment };
+    return { config, provider: config.provider, configured: configured && !switched, keyFromEnvironment };
   }
   get(): SettingsDTO {
     const { config, provider: p, configured, keyFromEnvironment } = this.resolved();
@@ -151,26 +155,29 @@ export class SettingsStore {
     const old = this.resolved();
     if (update.provider !== undefined) {
       const next = update.provider;
+      const previousType = saved.provider?.type ?? old.provider?.type;
+      const previous = saved.provider?.type === next?.type ? saved.provider : null;
       if (next && 'apiKey' in next && next.apiKey === null) {
         saved.provider =
           next.type === 'openai-compatible'
             ? ProviderConfig.parse({
-                ...(old.provider?.type === next.type ? old.provider : {}),
+                baseUrl: 'https://api.openai.com/v1',
+                ...previous,
                 ...next,
                 apiKey: undefined,
               })
             : null;
       } else {
-        const previous = old.provider?.type === next?.type ? old.provider : null;
         saved.provider = next
           ? ProviderConfig.parse({
+              ...(next.type === 'openai-compatible' ? { baseUrl: 'https://api.openai.com/v1' } : {}),
+              ...(old.provider?.type === next.type && old.keyFromEnvironment ? { apiKey: '' } : {}),
               ...previous,
-              ...(previous && 'apiKey' in previous && old.keyFromEnvironment ? { apiKey: '' } : {}),
               ...next,
             })
           : null;
       }
-      if (old.provider?.type !== next?.type) delete saved.models;
+      if (previousType !== next?.type) delete saved.models;
     }
     if (update.models)
       saved.models = {

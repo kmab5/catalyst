@@ -130,18 +130,26 @@ export function createEngine(opts: EngineOptions = {}): Engine {
       existing = opened.get(id);
     if (existing) return existing.project;
     const indexPath = join(root, '.catalyst');
-    if (existsSync(indexPath) && !lstatSync(indexPath).isDirectory())
+    const indexEntry = lstatSync(indexPath, { throwIfNoEntry: false });
+    if (indexEntry && !indexEntry.isDirectory())
       throw new CatalystError('BAD_REQUEST', 'Invalid index directory');
     mkdirSync(indexPath, { recursive: true });
     for (const suffix of ['', '-wal', '-shm', '-journal']) {
       const file = join(indexPath, 'catalyst.db' + suffix);
-      if (existsSync(file) && !lstatSync(file).isFile())
+      const entry = lstatSync(file, { throwIfNoEntry: false });
+      if (entry && !entry.isFile())
         throw new CatalystError('BAD_REQUEST', 'Invalid index file');
     }
     const store = openStore(join(indexPath, 'catalyst.db')),
       source = new LocalPathSource(root);
     store.meta.set('project_root', root);
-    const cfg = () => readJson<Config>(join(root, 'catalyst.config.json'), {});
+    const cfg = (): Config => {
+      const path = join(root, 'catalyst.config.json');
+      const entry = lstatSync(path, { throwIfNoEntry: false });
+      if (!entry) return {};
+      if (!entry.isFile()) throw new CatalystError('BAD_REQUEST', 'Invalid project configuration file');
+      return readJson<Config>(path, {});
+    };
     const language = () =>
       Lang.parse(
         store.meta.get('output_language') ?? cfg().outputLanguage ?? settings.get().outputLanguage,

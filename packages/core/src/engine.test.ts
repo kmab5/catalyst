@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,43 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe('index lifecycle and queries', () => {
+  it('applies environment overrides without replacing stored provider credentials or metadata', async () => {
+    const env: NodeJS.ProcessEnv = {};
+    const home = join(dir, 'overrides');
+    const context = createEngine({ homeDir: home, env });
+    try {
+      context.settings.update({ provider: { type: 'openai-compatible', apiKey: 'saved-only-1234', baseUrl: 'http://localhost:1200/v1' } });
+      env.OPENAI_API_KEY = 'environment-only-5678';
+      env.OPENAI_BASE_URL = 'http://localhost:1300/v1';
+      expect(context.settings.get().provider).toMatchObject({ apiKeySource: 'env', apiKeyMasked: 'enviro…5678', baseUrl: env.OPENAI_BASE_URL });
+      context.settings.update({ provider: { type: 'openai-compatible', name: 'Renamed' } });
+      const saved = JSON.parse(await readFile(join(home, '.catalyst/config.json'), 'utf8'));
+      expect(saved.provider).toMatchObject({ apiKey: 'saved-only-1234', baseUrl: 'http://localhost:1200/v1', name: 'Renamed' });
+      env.ANTHROPIC_API_KEY = 'synthetic-other-9412';
+      env.CATALYST_PROVIDER = 'anthropic';
+      expect(context.settings.get().provider).toMatchObject({ type: 'anthropic', apiKeySource: 'env' });
+      env.CATALYST_PROVIDER = 'none';
+      expect(context.settings.get().provider).toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
+  it('refuses symlinked project configuration and dangling index files', async (ctx) => {
+    const cfg = join(root, 'catalyst.config.json');
+    const outside = join(dir, 'outside.json');
+    await writeFile(outside, '{"outputLanguage":"tr"}');
+    try {
+      await symlink(outside, cfg, 'file');
+    } catch (err) {
+      if (process.platform === 'win32' && (err as NodeJS.ErrnoException).code === 'EPERM') return ctx.skip();
+      throw err;
+    }
+    expect(() => project.info()).toThrowError(expect.objectContaining({ code: 'BAD_REQUEST' }));
+    const sibling = join(dir, 'sibling');
+    await mkdir(join(sibling, '.catalyst'), { recursive: true });
+    await symlink(join(dir, 'absent.db'), join(sibling, '.catalyst', 'catalyst.db'), 'file');
+    await expect(engine.projects.open(sibling)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
   it('keeps environment credentials out of metadata edits and follows rotations', async () => {
     const env = { OPENROUTER_API_KEY: 'synthetic-original-1234' };
     const home = join(dir, 'env-home'),
