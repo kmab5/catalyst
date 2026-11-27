@@ -32,6 +32,7 @@ export const en = {
   'settings.appearance': 'Appearance',
   'settings.saved': 'Settings saved.',
   'settings.claudePlan': 'Billed to your Claude plan, no API key needed.',
+  'settings.groqHelp': 'Use your Groq API key for summaries and Ask.',
   'settings.routerHelp': 'Recommended — one key covers Anthropic, OpenAI, and open models.',
   'settings.recommended': 'Recommended',
   'settings.anthropicHelp': 'Direct Anthropic API key.',

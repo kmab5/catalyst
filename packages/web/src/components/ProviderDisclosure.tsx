@@ -3,6 +3,7 @@ import { t } from '@/i18n/t';
 
 const names = {
   openrouter: 'OpenRouter',
+  groq: 'Groq',
   anthropic: 'Anthropic',
   'claude-code': 'Claude Code',
   'openai-compatible': 'OpenAI-compatible',

@@ -42,6 +42,7 @@ export async function detectProviders(env: NodeJS.ProcessEnv): Promise<Providers
     claudeCli: cli,
     ollama,
     env: {
+      GROQ_API_KEY: !!env.GROQ_API_KEY,
       ANTHROPIC_API_KEY: !!env.ANTHROPIC_API_KEY,
       OPENROUTER_API_KEY: !!env.OPENROUTER_API_KEY,
       OPENAI_API_KEY: !!env.OPENAI_API_KEY,
@@ -57,12 +58,16 @@ function fromEnv(env: NodeJS.ProcessEnv): ProviderConfig | null {
         ? 'openrouter'
         : env.OPENAI_API_KEY
           ? 'openai-compatible'
-          : claudePath(env)
-            ? 'claude-code'
-            : 'none');
+          : env.GROQ_API_KEY
+            ? 'groq'
+            : claudePath(env)
+              ? 'claude-code'
+              : 'none');
   switch (type) {
     case 'claude-code':
       return { type, binary: claudePath(env) ?? 'claude' };
+    case 'groq':
+      return env.GROQ_API_KEY ? { type, apiKey: env.GROQ_API_KEY } : null;
     case 'anthropic':
       return env.ANTHROPIC_API_KEY ? { type, apiKey: env.ANTHROPIC_API_KEY } : null;
     case 'openrouter':
@@ -107,6 +112,7 @@ export class SettingsStore {
     let keyFromEnvironment = false;
     if (provider && provider.type !== 'claude-code') {
       const name = {
+        groq: 'GROQ_API_KEY',
         anthropic: 'ANTHROPIC_API_KEY',
         openrouter: 'OPENROUTER_API_KEY',
         'openai-compatible': 'OPENAI_API_KEY',
@@ -171,7 +177,10 @@ export class SettingsStore {
         saved.provider = next
           ? ProviderConfig.parse({
               ...(next.type === 'openai-compatible' ? { baseUrl: 'https://api.openai.com/v1' } : {}),
-              ...(old.provider?.type === next.type && old.keyFromEnvironment ? { apiKey: '' } : {}),
+              ...((old.provider?.type === next.type && old.keyFromEnvironment) ||
+              (next.type === 'groq' && this.env.GROQ_API_KEY)
+                ? { apiKey: '' }
+                : {}),
               ...previous,
               ...next,
             })

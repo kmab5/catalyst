@@ -14,6 +14,7 @@ export async function providerCommand(engine: Engine, deps: CliDeps) {
   const detected = await engine.settings.detect();
   const choices = [
     ['openrouter', detected.env.OPENROUTER_API_KEY ? 'environment key detected' : ''],
+    ['groq', detected.env.GROQ_API_KEY ? 'environment key detected' : ''],
     ['anthropic', detected.env.ANTHROPIC_API_KEY ? 'environment key detected' : ''],
     [
       'openai-compatible',
@@ -37,10 +38,11 @@ export async function providerCommand(engine: Engine, deps: CliDeps) {
   let provider: ProviderConfig | undefined;
   if (
     current?.type !== type.data ||
-    (current.apiKeySource === 'none' && (type.data === 'openrouter' || type.data === 'anthropic'))
+    (current.apiKeySource === 'none' && (type.data === 'openrouter' || type.data === 'anthropic' || type.data === 'groq'))
   ) {
     switch (type.data) {
       case 'openrouter':
+      case 'groq':
       case 'anthropic': {
         const apiKey = (await prompt('API key (hidden): ', true)).trim();
         if (!apiKey) throw new CliError(EXIT.BAD_ARGS, 'An API key is required for this provider.');

@@ -8,6 +8,25 @@ import { renderPage } from '../test/renderPage';
 beforeEach(() => vi.stubGlobal('fetch', fetch));
 afterEach(() => vi.unstubAllGlobals());
 
+test('selecting Groq replaces the previous models and saves a Groq credential', async () => {
+  const fixture = getFixture();
+  let update: unknown;
+  installMockFetch(fixture, {
+    'PUT /api/settings': async req => {
+      update = await req.json();
+      return Response.json(fixture.settings);
+    },
+  });
+  renderPage(<Settings />);
+  await userEvent.click(await screen.findByRole('radio', { name: /^Groq\b/i }));
+  await userEvent.type(screen.getByLabelText('API key'), 'synthetic-groq');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(update).toMatchObject({
+    provider: { type: 'groq', apiKey: 'synthetic-groq' },
+    models: { fast: 'openai/gpt-oss-20b', smart: 'openai/gpt-oss-120b' },
+  });
+});
+
 test('shows only the masked key and can remove it explicitly', async () => {
   const fixture = getFixture();
   let update: unknown;

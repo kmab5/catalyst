@@ -14,7 +14,7 @@ export function createProvider(
   if (config.type === 'anthropic')
     return new SdkProvider(config.type, 'Anthropic', models, createAnthropic({ apiKey: config.apiKey }));
   const router = config.type === 'openrouter';
-  const endpoint = new URL(config.baseUrl);
+  const endpoint = new URL(config.type === 'groq' ? 'https://api.groq.com/openai/v1' : config.baseUrl);
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
   const sdk = createOpenAICompatible({
     name: config.type,
@@ -25,5 +25,5 @@ export function createProvider(
       ? { 'HTTP-Referer': 'https://github.com/kmab5/catalyst', 'X-Title': 'Catalyst' }
       : undefined,
   });
-  return new SdkProvider(config.type, router ? 'OpenRouter' : config.name, models, sdk, local);
+  return new SdkProvider(config.type, router ? 'OpenRouter' : config.type === 'groq' ? 'Groq' : config.name, models, sdk, local);
 }

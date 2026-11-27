@@ -13,6 +13,24 @@ vi.mock('node:child_process', async (original) => ({
   ...(await original<typeof import('node:child_process')>()),
   spawn: vi.fn(),
 }));
+test('Groq sends its own bearer key and fast model to the Groq API', async () => {
+  const transport = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
+    expect(String(url)).toBe('https://api.groq.com/openai/v1/chat/completions');
+    expect(new Headers(options?.headers).get('authorization')).toBe('Bearer synthetic-groq');
+    expect(JSON.parse(String(options?.body)).model).toBe('openai/gpt-oss-20b');
+    return Response.json({ choices: [{ index: 0, message: { role: 'assistant', content: 'OK' }, finish_reason: 'stop' }] });
+  });
+  vi.stubGlobal('fetch', transport);
+  try {
+    const provider = createProvider({ type: 'groq', apiKey: 'synthetic-groq' });
+    expect(provider.modelFor('smart')).toBe('openai/gpt-oss-120b');
+    expect(await provider.test()).toMatchObject({ ok: true });
+    expect(transport).toHaveBeenCalledOnce();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test('OpenRouter selects zero-cost models for both tiers by default', () => {
   const provider = createProvider({ type: 'openrouter', apiKey: 'test', baseUrl: 'https://openrouter.ai/api/v1' });
   for (const tier of ['fast', 'smart'] as const) {

@@ -70,6 +70,7 @@ export function configSetToUpdate(key: string, raw: string, current: SettingsDTO
       switch (type.data) {
         case 'openrouter':
           return { provider: { type: type.data, baseUrl: openRouterUrl, apiKey: '' } };
+        case 'groq':
         case 'anthropic':
           return { provider: { type: type.data, apiKey: '' } };
         case 'openai-compatible':
@@ -83,7 +84,7 @@ export function configSetToUpdate(key: string, raw: string, current: SettingsDTO
       if (!provider || provider.type === 'claude-code')
         return invalid('Select a provider that uses an API key first.');
       const apiKey = value || null;
-      if (provider.type === 'anthropic') return { provider: { type: provider.type, apiKey } };
+      if (provider.type === 'anthropic' || provider.type === 'groq') return { provider: { type: provider.type, apiKey } };
       return {
         provider: {
           type: provider.type,

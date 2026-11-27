@@ -6,7 +6,7 @@ import {
   useTestProvider,
   useUpdateSettings,
 } from '@/api/hooks/queries';
-import { ProviderConfig, type Lang, type ProviderType, type SettingsUpdate } from '@/api/contract';
+import { GROQ_MODELS, ProviderConfig, type Lang, type ProviderType, type SettingsUpdate } from '@/api/contract';
 import { PageSkeleton } from '@/components/Skeleton';
 import { ProviderDisclosure } from '@/components/ProviderDisclosure';
 import { ErrorCard } from '@/components/ErrorCard';
@@ -14,6 +14,7 @@ import { t } from '@/i18n/t';
 import { cn } from '@/lib/cn';
 
 const MODEL_SUGGESTIONS: Record<ProviderType, { fast: string; smart: string }> = {
+  groq: GROQ_MODELS,
   openrouter: { fast: 'openrouter/free', smart: 'openrouter/free' },
   anthropic: { fast: 'claude-haiku-5-5', smart: 'claude-sonnet-5-5' },
   'openai-compatible': { fast: 'gpt-4o-mini', smart: 'gpt-4o' },
@@ -116,8 +117,8 @@ export function Settings() {
         ...key,
       };
     }
-    if (providerType === 'anthropic') {
-      return { type: 'anthropic', ...key };
+    if (providerType === 'anthropic' || providerType === 'groq') {
+      return { type: providerType, ...key };
     }
     return {
       type: 'openrouter',
@@ -156,13 +157,14 @@ export function Settings() {
   }
 
   const showKeyField =
+    providerType === 'groq' ||
     providerType === 'openrouter' ||
     providerType === 'anthropic' ||
     providerType === 'openai-compatible';
 
   const maskedKey =
     providerType === settings?.provider?.type ? settings?.provider?.apiKeyMasked : null;
-  const keyRequired = !maskedKey && (providerType === 'openrouter' || providerType === 'anthropic');
+  const keyRequired = !maskedKey && (providerType === 'openrouter' || providerType === 'anthropic' || (providerType === 'groq' && !detected?.env.GROQ_API_KEY));
   const testingDraft = providerDirty || Boolean(apiKeyInput.trim());
   const testConfig = testingDraft ? ProviderConfig.safeParse(buildProviderConfig()) : undefined;
   const canTestDraft =
@@ -188,6 +190,7 @@ export function Settings() {
       subtitle: t('settings.routerHelp'),
       badge: t('settings.recommended'),
     },
+    { id: 'groq', title: 'Groq', subtitle: t('settings.groqHelp') },
     {
       id: 'anthropic',
       title: 'Anthropic',
@@ -334,7 +337,7 @@ export function Settings() {
                                 ? 'ANTHROPIC_API_KEY'
                                 : providerType === 'openrouter'
                                   ? 'OPENROUTER_API_KEY'
-                                  : 'OPENAI_API_KEY',
+                                  : providerType === 'groq' ? 'GROQ_API_KEY' : 'OPENAI_API_KEY',
                             masked: maskedKey,
                           })
                         : t('settings.masked', { masked: maskedKey })}

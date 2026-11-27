@@ -17,7 +17,7 @@ export function hasProvider(settings: SettingsDTO) {
   const provider = settings.provider;
   if (!provider) return false;
   return (
-    (provider.type !== 'openrouter' && provider.type !== 'anthropic') ||
+    (provider.type !== 'openrouter' && provider.type !== 'anthropic' && provider.type !== 'groq') ||
     provider.apiKeySource !== 'none'
   );
 }

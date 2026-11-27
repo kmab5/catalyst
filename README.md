@@ -50,6 +50,8 @@ GitHub runs the checks on pushes and pull requests targeting `dev` or `main`. A 
 
 ## Indexing and AI
 
+To use Groq, launch `node packages/cli/dist/index.js ui`, open **Settings → Groq**, enter your Groq key, and choose **Test connection** and **Save**. Catalyst fills in the endpoint and both model IDs. For a CLI session, put `GROQ_API_KEY` in the ignored `.env`, set `$env:CATALYST_PROVIDER = "groq"` in PowerShell, and run `node --env-file=.env packages/cli/dist/index.js ui`.
+
 To explore dependencies without sending code to an AI provider, run a structural index.
 
 ```sh

@@ -30,6 +30,19 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe('index lifecycle and queries', () => {
+  it('switches from a saved OpenRouter provider to Groq using the environment key', async () => {
+    const home = join(dir, 'groq-home');
+    const context = createEngine({ homeDir: home, env: { GROQ_API_KEY: 'synthetic-groq-key' } });
+    try {
+      context.settings.update({ provider: { type: 'openrouter', apiKey: 'synthetic-router-key' } });
+      const result = context.settings.update({ provider: { type: 'groq' } });
+      expect(result.provider).toMatchObject({ type: 'groq', apiKeySource: 'env' });
+      expect(result.models.fast).toBe('openai/gpt-oss-20b');
+      expect(await readFile(join(home, '.catalyst', 'config.json'), 'utf8')).not.toContain('synthetic-groq-key');
+    } finally {
+      await context.close();
+    }
+  });
   it('reads through a project root alias and rejects linked directories inside it', async () => {
     const alias = join(dir, 'project-alias');
     await symlink(root, alias, 'junction');
