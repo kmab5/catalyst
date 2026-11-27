@@ -19,3 +19,15 @@ node packages/cli/dist/index.js serve ../catalyst-testbeds/taxonomy
 | 3:45–4:00 | Return to the Taxonomy webhook or session helper. | Close on a code citation that the audience can check in the repository. |
 
 For a live incremental-index demonstration, make a small edit in a disposable copy of Taxonomy before the presentation. Use the status menu to re-index, then open the changed file in Explorer. Keep the original warm demo checkout available.
+
+## Screen fallback
+
+These captures show the real Taxonomy project after an AI run stopped partway through. The feature page shows a group derived from dependencies. Billing feature discovery and both Ask answers require a working provider for the live walkthrough.
+
+| Cue | Screenshot |
+| --- | --- |
+| Identify Next.js, Prisma and Stripe, then point to the webhook route. | [Structural Overview](screenshots/overview.png) |
+| Open the group containing the webhook and point to the changeability evidence. | [Dependency group](screenshots/feature.png) |
+| Follow a resolved caller of `getCurrentUser`. | [Session helper X-Ray](screenshots/xray.png) |
+| Show the session file's two-hop neighborhood. | [Focused dependency graph](screenshots/graph.png) |
+| Open the route finding and check its interpretation against the Stripe signature verification in source. | [Structural Health findings](screenshots/health.png) |

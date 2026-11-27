@@ -107,6 +107,18 @@ export function parseFile({ parser, source, path }: FileInput, py = false): Pars
     let name = field(n, 'name')?.text;
     let kind = kinds[type];
     const value = field(n, 'value') ?? field(n, 'right');
+    if (py && type === 'assignment' && field(n, 'left')?.type === 'identifier') {
+      const name = field(n, 'left')!.text;
+      const path = literal(value);
+      const callee = value?.type === 'call' ? field(value, 'function')?.text : undefined;
+      const argument = value?.type === 'call' ? field(value, 'arguments')?.firstNamedChild?.text : undefined;
+      const ctor = callee?.match(/^([A-Z]\w*)(?:\.model_validate)?$/)?.[1];
+      const fetched = callee && /^(?:session|db)\.get$/.test(callee) ? argument : undefined;
+      const typeName = field(n, 'type')?.text ?? ctor ?? fetched;
+      const pathLiteral = path && /^\/[\w/{}:.-]*$/.test(path) ? path : undefined;
+      if (pathLiteral || typeName)
+        p.pythonBindings.push({ scope: caller, name, typeName, pathLiteral, line: line(n) });
+    }
     let callable = n;
     const assigned =
       type === 'variable_declarator'
@@ -141,6 +153,16 @@ export function parseFile({ parser, source, path }: FileInput, py = false): Pars
     ) {
       kind = type === 'class' ? 'class' : 'function';
       name = field(n, 'name')?.text ?? 'default';
+    }
+    if (
+      !kind &&
+      n.parent?.type === 'export_statement' &&
+      field(n.parent, 'value')?.id === n.id &&
+      type !== 'identifier' &&
+      /^export\s+default\b/.test(n.parent.text)
+    ) {
+      kind = 'variable';
+      name = 'default';
     }
     if (kind && name) {
       const body = field(callable, 'body');
@@ -181,6 +203,13 @@ export function parseFile({ parser, source, path }: FileInput, py = false): Pars
       const pass = body?.text.match(/^(?:\{\s*return\s+|return\s+)?([\w$.]+)\s*\(([\w$,\s]*)\)\s*;?\s*\}?$/);
       symbol.localNames = params?.split(',').filter((name) => /^[\w$]+$/.test(name)) ?? [];
       scopes.set(key, symbol);
+      if (py)
+        for (const param of field(callable, 'parameters')?.namedChildren ?? []) {
+          const typeName = field(param, 'type')?.text;
+          const name = field(param, 'name')?.text ?? param.firstNamedChild?.text;
+          if (name && typeName)
+            p.pythonBindings.push({ scope: key, name, typeName, line: line(param), parameter: true });
+        }
       if (pass && params === pass[2]!.replace(/\s/g, '')) symbol.passThrough = pass[1];
       p.symbols.push(symbol);
       if (symbol.exported) p.exports.push({ local: name, exported: defaultExport ? 'default' : name });
@@ -194,7 +223,7 @@ export function parseFile({ parser, source, path }: FileInput, py = false): Pars
           if (sup.type !== 'keyword_argument')
             p.refs.push({ callerSymbol: key, name: sup.text, line: line(sup), kind: 'extends' });
       }
-      if (kind !== 'variable') caller = key;
+      if (kind !== 'variable' || defaultExport) caller = key;
       if (['method', 'function', 'component', 'hook'].includes(kind)) p.complexity[key] = 1;
     }
     if (
@@ -271,6 +300,12 @@ export function parseFile({ parser, source, path }: FileInput, py = false): Pars
         /^(?:process\.env|import\.meta\.env|os\.environ)(?:\.([\w$]+)|\[['"](\w+)['"]\])$/,
       );
       if (match) p.env.push({ callerSymbol: caller, name: (match[1] ?? match[2])!, line: line(n) });
+      else if (!py) {
+        const receiver = field(n, 'object')?.text;
+        const name = field(n, 'property')?.text;
+        if (receiver && name && /^[\w$]+$/.test(receiver) && /^[A-Z][A-Z0-9_]*$/.test(name))
+          p.env.push({ callerSymbol: caller, name, receiver, line: line(n) });
+      }
     }
     if (type === 'variable_declarator' && value?.text === 'process.env') {
       for (const key of field(n, 'name')?.namedChildren ?? [])
@@ -286,9 +321,19 @@ export function parseFile({ parser, source, path }: FileInput, py = false): Pars
         });
     } else if (
       (type === 'identifier' || type === 'type_identifier') &&
-      ['arguments', 'argument_list', 'return_statement', 'array', 'list', 'type_annotation'].includes(
-        n.parent?.type ?? '',
-      )
+      ([
+        'arguments',
+        'argument_list',
+        'return_statement',
+        'array',
+        'list',
+        'type_annotation',
+        'type_arguments',
+        'ternary_expression',
+        'binary_expression',
+        'spread_element',
+      ].includes(n.parent?.type ?? '') ||
+        (n.parent?.type === 'member_expression' && field(n.parent, 'object')?.id === n.id))
     ) {
       p.refs.push({ callerSymbol: caller, name: n.text, kind: 'references', line: line(n) });
     }

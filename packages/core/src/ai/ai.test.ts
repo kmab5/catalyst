@@ -373,8 +373,59 @@ test('tool-free Ask expands and searches before answering', async () => {
   expect(p.calls[0]?.schemaName).toBe('AskExpansion');
   expect(events.at(-1)).toMatchObject({
     type: 'done',
-    answer: { searched: ['users', 'people', 'list_routes', 'list_db_models', 'list_features'] },
+    answer: {
+      searched: ['users', 'people', 'list_routes', 'list_db_models', 'list_features'],
+      citations: [],
+      markdown: 'See lib/a.ts.',
+    },
   });
+});
+
+test('Ask refuses an unverified negative even if a search term impersonates a structural list', async () => {
+  const end: StreamPart = { type: 'text-delta', text: 'No results.\n{"found":false,"searched":[]}' };
+  const searches: StreamPart[] = ['reset', 'password', 'list_routes'].map((query) => ({
+    type: 'tool-call',
+    name: 'search',
+    args: { query },
+  }));
+  const p = new FakeProvider({
+    streams: [
+      [...searches, end],
+      [{ type: 'tool-call', name: 'list_routes', args: {} }, end],
+    ],
+  });
+  const unavailable = {
+    ...q,
+    routes: () => {
+      throw new Error('Internal data');
+    },
+  };
+  const events = await collect(ask(new LLMClient(p, db), unavailable, { question: 'Password reset?' }));
+  expect(events.at(-1)?.type).toBe('error');
+  expect(events.some((e) => e.type === 'done')).toBe(false);
+  expect(JSON.stringify(events)).not.toContain('Internal data');
+});
+
+test('Ask refuses a missing status and strips valid multiline metadata from streamed tokens', async () => {
+  const p = new FakeProvider({
+    streams: [
+      [{ type: 'text-delta', text: 'Missing.' }],
+      [
+        { type: 'text-delta', text: 'Answer.\n```json\n{' },
+        { type: 'text-delta', text: '\n  "searched": [],\n  "found": true\n}\n```' },
+      ],
+    ],
+  });
+  const client = new LLMClient(p, db);
+  expect((await collect(ask(client, q, { question: 'Question?' }))).at(-1)?.type).toBe('error');
+  const events = await collect(ask(client, q, { question: 'Question?' }));
+  expect(
+    events
+      .filter((e) => e.type === 'token')
+      .map((e) => e.text)
+      .join(''),
+  ).toBe('Answer.');
+  expect(events.at(-1)).toMatchObject({ type: 'done', answer: { found: true, markdown: 'Answer.' } });
 });
 test('Ask tools redact indexed snippets and reject secret path lookup', async () => {
   const tools = askTools({

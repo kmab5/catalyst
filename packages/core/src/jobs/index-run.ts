@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ProgressEvent, RunDTO } from '@catalyst/shared';
 import type { IndexRun } from '../engine.js';
 import type { Store } from '../store/index.js';
@@ -12,6 +13,77 @@ export type Report = (
   degraded?: boolean,
 ) => void;
 type Stats = NonNullable<RunDTO['stats']>;
+export function activeOwner(store: Store): string | null {
+  const raw = store.meta.get('run_owner');
+  if (!raw) return null;
+  const lease = JSON.parse(raw) as { pid: number; id: string };
+  try {
+    process.kill(lease.pid, 0);
+    return lease.id;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ESRCH') return lease.id;
+  }
+  store.db
+    .transaction(() => {
+      if (store.meta.get('run_owner') !== raw) return;
+      const old = store.run(lease.id);
+      if (old?.status === 'running') {
+        const error = 'Indexing process stopped before completion';
+        const event: ProgressEvent = {
+          runId: old.id,
+          stage: 'error',
+          done: 1,
+          total: 1,
+          message: error,
+        };
+        store
+          .stmt(
+            'INSERT INTO run_events SELECT ?,COALESCE(MAX(seq),0)+1,? FROM run_events WHERE run_id=?',
+          )
+          .run(old.id, JSON.stringify(event), old.id);
+        store.saveRun({ ...old, status: 'error', error, lastEvent: event, finishedAt: Date.now() });
+        store.meta.set('last_status', 'error');
+      }
+      store.stmt("DELETE FROM meta WHERE key='run_owner'").run();
+    })
+    .immediate();
+  return null;
+}
+
+export function storedRun(store: Store, id: string): IndexRun | undefined {
+  if (!store.run(id)) return;
+  async function* events(since = 0) {
+    for (;;) {
+      activeOwner(store);
+      const run = store.run(id);
+      const rows = store.all<{ seq: number; event: string }>(
+        'SELECT seq,event FROM run_events WHERE run_id=? AND seq>? ORDER BY seq',
+        id,
+        since,
+      );
+      for (const row of rows) {
+        since = row.seq;
+        yield { id: row.seq, event: JSON.parse(row.event) as ProgressEvent };
+      }
+      if (!run || run.status !== 'running') break;
+      await delay(200);
+    }
+  }
+  return {
+    id,
+    events,
+    get done() {
+      return (async () => {
+        for await (const _ of events()) {
+        }
+        return store.run(id)!;
+      })();
+    },
+    cancel() {
+      if (activeOwner(store) === id) store.meta.set('cancel_run', id);
+    },
+  };
+}
 export function startIndexRun(
   store: Store,
   work: (signal: AbortSignal, report: Report, stats: Stats) => Promise<void>,
@@ -42,29 +114,11 @@ export function startIndexRun(
   };
   store.db
     .transaction(() => {
-      const owner = store.meta.get('run_owner');
-      if (owner) {
-        const lease = JSON.parse(owner) as { pid: number; id: string };
-        let alive = true;
-        try {
-          process.kill(lease.pid, 0);
-        } catch (e) {
-          alive = (e as NodeJS.ErrnoException).code !== 'ESRCH';
-        }
-        if (alive)
-          throw new CatalystError('INDEX_RUNNING', 'Another process is indexing this project', {
-            runId: lease.id,
-          });
-        const previous = store.run(lease.id);
-        if (previous?.status === 'running') {
-          store.saveRun({
-            ...previous,
-            status: 'error',
-            finishedAt: Date.now(),
-            error: 'Indexing process stopped before completion',
-          });
-        }
-      }
+      const owner = activeOwner(store);
+      if (owner)
+        throw new CatalystError('INDEX_RUNNING', 'Another process is indexing this project', {
+          runId: owner,
+        });
       store.meta.set('run_owner', JSON.stringify({ pid: process.pid, id }));
       store.saveRun(run);
     })
@@ -80,10 +134,19 @@ export function startIndexRun(
     history.push({ id: ++seq, event });
     if (history.length > 500) history.shift();
     run.lastEvent = event;
-    if (previous !== stage || done === total) store.saveRun(run);
+    store.db.transaction(() => {
+      store.stmt('INSERT INTO run_events VALUES(?,?,?)').run(id, seq, JSON.stringify(event));
+      if (seq > 500)
+        store.stmt('DELETE FROM run_events WHERE run_id=? AND seq=?').run(id, seq - 500);
+      store.saveRun(run);
+    })();
     for (const wake of listeners) wake();
     listeners.clear();
   };
+  const poll = setInterval(() => {
+    if (store.meta.get('cancel_run') === id) controller.abort();
+  }, 200);
+  poll.unref();
   const done = Promise.resolve().then(async () => {
     try {
       await work(controller.signal, report, stats);
@@ -99,6 +162,8 @@ export function startIndexRun(
       report(run.status, 1, 1, run.error ?? undefined);
       finished(run);
     } finally {
+      clearInterval(poll);
+      store.stmt("DELETE FROM meta WHERE key='cancel_run' AND value=?").run(id);
       store
         .stmt("DELETE FROM meta WHERE key='run_owner' AND value=?")
         .run(JSON.stringify({ pid: process.pid, id }));

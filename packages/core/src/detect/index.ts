@@ -51,11 +51,39 @@ export function detect(
     }
   }
   const sqlModels = new Map<string, string>();
+  const sqlModelClasses = new Set<string>(),
+    children = new Map<string, string[]>();
+  for (const p of Object.values(parsed)) {
+    const baseNames = new Set(
+      p.imports
+        .filter((i) => i.specifier === 'sqlmodel')
+        .flatMap((i) => i.names.filter((n) => n.imported === 'SQLModel').map((n) => n.local)),
+    );
+    for (const ref of p.refs)
+      if (ref.kind === 'extends' && baseNames.has(ref.name))
+        sqlModelClasses.add(ids.sym(p.path, ref.callerSymbol));
+  }
+  for (const edge of model.edges.values())
+    if (edge.kind === 'extends') {
+      const list = children.get(edge.dst) ?? [];
+      list.push(edge.src);
+      children.set(edge.dst, list);
+    }
+  const queue = [...sqlModelClasses];
+  for (let index = 0; index < queue.length; index++)
+    for (const child of children.get(queue[index]!) ?? []) {
+      if (!sqlModelClasses.has(child)) {
+        sqlModelClasses.add(child);
+        queue.push(child);
+      }
+    }
   for (const p of Object.values(parsed))
     for (const s of p.symbols.filter((s) => s.symbolKind === 'class')) {
       if (
         enabled.sqlalchemy !== false &&
-        /(?:\b(?:Base|DeclarativeBase|db\.Model)\b|\bSQLModel\b.*table\s*=\s*True)/.test(s.signature)
+        filesByPath.get(p.path)?.language === 'python' &&
+        (/\b(?:Base|DeclarativeBase|db\.Model)\b/.test(s.signature) ||
+          (sqlModelClasses.has(ids.sym(p.path, s.key)) && /\btable\s*=\s*True/.test(s.signature)))
       ) {
         const id = ids.db('sqlalchemy', s.name);
         sqlModels.set(s.name, id);
@@ -175,11 +203,45 @@ export function detect(
     }
     return found;
   };
+  const envObjects = new Set<string>();
+  if (enabled.env !== false)
+    for (const file of Object.values(parsed)) {
+      const factories = new Set(
+        file.imports
+          .filter((i) => i.specifier.startsWith('@t3-oss/env'))
+          .flatMap((i) => i.names.filter((n) => n.imported === 'createEnv').map((n) => n.local)),
+      );
+      for (const call of file.calls)
+        if (factories.has(call.calleeText)) {
+          const object = file.symbols.find(
+            (s) => s.symbolKind === 'variable' && s.startLine <= call.line && s.endLine >= call.line,
+          );
+          if (object) envObjects.add(ids.sym(file.path, object.key));
+        }
+    }
   for (const p of Object.values(parsed)) {
     const called = new Set<string>();
     if (enabled.env !== false)
-      for (const e of p.env)
-        model.edge(sourceId(p.path, e.callerSymbol), env(e.name), 'uses_env', p.path, e.line);
+      for (const e of p.env) {
+        if (e.receiver) {
+          const bound =
+            linked.bindings.get(p.path)?.get(e.receiver)?.id ?? linked.local.get(p.path)?.get(e.receiver);
+          if (
+            !bound ||
+            !envObjects.has(bound) ||
+            p.symbols.find((s) => s.key === e.callerSymbol)?.localNames?.includes(e.receiver)
+          )
+            continue;
+        }
+        model.edge(
+          sourceId(p.path, e.callerSymbol),
+          env(e.name),
+          'uses_env',
+          p.path,
+          e.line,
+          e.receiver ? 'resolved' : 'ast',
+        );
+      }
     for (const c of p.calls) {
       const src = sourceId(p.path, c.callerSymbol),
         parts = c.calleeText.split('.');
@@ -215,7 +277,7 @@ export function detect(
           model.edge(src, modelId, write ? 'writes' : 'reads', p.path, c.line, 'resolved');
       }
       const sup = c.calleeText.match(
-        /(?:^|\.)(\w+)\.from\(\s*['"]([^'"]+)['"]\s*\)\.(insert|update|upsert|delete|select)\b/,
+        /(?:^|\.)(\w+)\.from\(\s*['"]([^'"]+)['"]\s*\)\.(insert|update|upsert|delete|select)$/,
       );
       if (
         enabled.supabase !== false &&
@@ -234,7 +296,10 @@ export function detect(
         sqlModels.size
       ) {
         const arg = c.args.join(',');
-        const name = arg.match(/\b([A-Z]\w*)\b/)?.[1];
+        const variable = p.pythonBindings
+          .filter((b) => b.scope === c.callerSymbol && b.name === arg && b.line <= c.line)
+          .at(-1);
+        const name = arg.match(/\b([A-Z]\w*)\b/)?.[1] ?? variable?.typeName;
         const id = sqlModels.get(name ?? '') ?? ids.db('sqlalchemy', '*unknown');
         if (!model.nodes.has(id)) model.node(id, 'Unknown model', { data: { orm: 'sqlalchemy' } });
         model.edge(

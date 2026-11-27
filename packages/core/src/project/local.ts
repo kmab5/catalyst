@@ -13,6 +13,7 @@ import {
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { CatalystError } from '../errors.js';
+import Database from 'better-sqlite3';
 
 export const projectId = (root: string) =>
   createHash('sha1').update(root).digest('hex').slice(0, 12);
@@ -67,6 +68,16 @@ export function writeJson(path: string, value: unknown) {
   writeFileSync(temp, JSON.stringify(value, null, 2), { mode: 0o600, flag: 'wx' });
   renameSync(temp, path);
 }
+// JSON rename protects readers. This OS-backed lock also serializes independent CLI writers.
+export function updateLocalState<T>(path: string, change: () => T): T {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const mutex = new Database(join(dirname(path), '.state-lock.sqlite'));
+  try {
+    return mutex.transaction(change).immediate();
+  } finally {
+    mutex.close();
+  }
+}
 type Recent = {
   id: string;
   root: string;
@@ -83,30 +94,36 @@ export class ProjectRegistry {
     return readJson<Recent[]>(this.path, []).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
   }
   touch(root: string) {
-    const rows = this.recent(),
-      id = projectId(root),
-      old = rows.find((r) => r.id === id);
-    writeJson(this.path, [
-      {
-        id,
-        root,
-        name: basename(root),
-        lastOpenedAt: Date.now(),
-        lastIndexedAt: old?.lastIndexedAt ?? null,
-      },
-      ...rows.filter((r) => r.id !== id),
-    ]);
+    updateLocalState(this.path, () => {
+      const rows = this.recent(),
+        id = projectId(root),
+        old = rows.find((r) => r.id === id);
+      writeJson(this.path, [
+        {
+          id,
+          root,
+          name: basename(root),
+          lastOpenedAt: Date.now(),
+          lastIndexedAt: old?.lastIndexedAt ?? null,
+        },
+        ...rows.filter((r) => r.id !== id),
+      ]);
+    });
   }
   indexed(id: string, time: number) {
-    writeJson(
-      this.path,
-      this.recent().map((r) => (r.id === id ? { ...r, lastIndexedAt: time } : r)),
+    updateLocalState(this.path, () =>
+      writeJson(
+        this.path,
+        this.recent().map((r) => (r.id === id ? { ...r, lastIndexedAt: time } : r)),
+      ),
     );
   }
   forget(id: string) {
-    writeJson(
-      this.path,
-      this.recent().filter((r) => r.id !== id),
+    updateLocalState(this.path, () =>
+      writeJson(
+        this.path,
+        this.recent().filter((r) => r.id !== id),
+      ),
     );
   }
 }

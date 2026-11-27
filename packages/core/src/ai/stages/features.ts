@@ -247,8 +247,8 @@ export async function discover({ s, client, attempt }: StageContext) {
     client.concurrency,
     async (i) => {
       const batch = index.slice(i, i + batchSize);
-      const result = await attempt('features batch ' + i, () =>
-        client.object('features', {
+      const result = await attempt('features batch ' + i, async () => {
+        const request = {
           tier: 'smart',
           schema,
           schemaName: 'Features',
@@ -260,8 +260,23 @@ export async function discover({ s, client, attempt }: StageContext) {
             anchors: JSON.stringify(anchors).slice(0, 11000),
             files: batch,
           }),
-        }),
-      );
+        } as const;
+        const first = await client.object('features', request);
+        const invalid = first.features.filter((f) => !f.members.some((m) => s.nodes.has(m.nodeId)));
+        if (!invalid.length) return first;
+        client.repairs.features = (client.repairs.features ?? 0) + 1;
+        const corrected = await client.object('features', {
+          ...request,
+          prompt:
+            request.prompt +
+            '\nRegenerate only these capabilities. All member IDs in the previous response were missing from the index. Copy IDs exactly from FILES: ' +
+            JSON.stringify(invalid.map((f) => f.name)),
+        });
+        const valid = first.features.filter((f) => !invalid.includes(f));
+        valid.push(...corrected.features.filter((f) => f.members.some((m) => s.nodes.has(m.nodeId))));
+        if (!valid.length) throw new Error('No grounded feature members');
+        return { features: valid };
+      });
       if (result)
         outputs.set(
           i,

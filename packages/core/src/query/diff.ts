@@ -30,12 +30,12 @@ export async function diffImpact(
     await git(['diff', '--no-ext-diff', '--name-status', '-z', '-M', target, '--'])
   ).split('\0');
   const changedFiles: DiffImpactDTO['changedFiles'] = [];
-  const previousPaths = new Map<string,string>();
+  const previousPaths = new Map<string, string>();
   for (let i = 0; i < names.length && names[i]; ) {
     const type = names[i++]!,
       old = names[i++]!,
       path = type.startsWith('R') ? names[i++]! : old;
-    if(type.startsWith('R')) previousPaths.set(path,old);
+    if (type.startsWith('R')) previousPaths.set(path, old);
     changedFiles.push({
       path,
       status: type.startsWith('R')
@@ -61,9 +61,9 @@ export async function diffImpact(
   for (const f of changedFiles) {
     let indexedPath = f.path;
     let nodes = query.listNodes({ filePath: indexedPath });
-    if(!nodes.length && previousPaths.has(f.path)){
+    if (!nodes.length && previousPaths.has(f.path)) {
       indexedPath = previousPaths.get(f.path)!;
-      nodes = query.listNodes({filePath:indexedPath});
+      nodes = query.listNodes({ filePath: indexedPath });
     }
     if (!nodes.length) continue;
     const patch = await git([
