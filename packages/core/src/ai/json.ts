@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export function parseOutput<T>(input: unknown, schema: z.ZodType<T, z.ZodTypeDef, any>): T {
+export function parseOutput<T>(input: unknown, schema: z.ZodType<T>): T {
   let value = input;
   if (typeof input === 'string') {
     const text = input.replace(/[“”]/g, '"');
@@ -36,7 +36,7 @@ export function parseOutput<T>(input: unknown, schema: z.ZodType<T, z.ZodTypeDef
   }
   return schema.parse(coerce(value, schema));
 }
-function coerce(value: unknown, schema: z.ZodTypeAny): unknown {
+function coerce(value: unknown, schema: z.core.$ZodType): unknown {
   if (schema instanceof z.ZodObject && value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, v]) => [
@@ -45,13 +45,17 @@ function coerce(value: unknown, schema: z.ZodTypeAny): unknown {
       ]),
     );
   }
-  if (schema instanceof z.ZodArray && Array.isArray(value))
-    return value
-      .slice(0, schema._def.maxLength?.value ?? value.length)
-      .map((v) => coerce(v, schema.element));
+  if (schema instanceof z.ZodArray && Array.isArray(value)) {
+    let limit = value.length;
+    for (const check of schema.def.checks ?? []) {
+      if (check instanceof z.core.$ZodCheckMaxLength)
+        limit = Math.min(limit, check._zod.def.maximum);
+    }
+    return value.slice(0, limit).map((v) => coerce(v, schema.element));
+  }
   if (schema instanceof z.ZodString && typeof value === 'string')
     return value.slice(0, schema.maxLength ?? value.length);
-  if (schema instanceof z.ZodEnum && !schema.options.includes(value) && schema.options.includes('other'))
+  if (schema instanceof z.ZodEnum && !schema.options.some((v) => v === value) && schema.options.includes('other'))
     return 'other';
   if (schema instanceof z.ZodNumber && typeof value === 'number')
     return Math.max(schema.minValue ?? -Infinity, Math.min(schema.maxValue ?? Infinity, value));

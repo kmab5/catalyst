@@ -4,6 +4,12 @@ Recorded on Windows with Node 22.23.5 and pnpm 9.15.9. Unit and integration test
 
 ## Agent A
 
+### Integrated dev branch audit
+
+The frozen install, workspace typecheck, production build and all 236 tests across 48 suites passed on Node 22.23.5. The dependency audit reported zero known advisories, including development dependencies. Chromium passed against the built server. The HTTP smoke test validated the response schemas and port fallback. A separate npm installation of the tarball successfully indexed a 15-file fixture with zero provider calls.
+
+Structural indexing completed on isolated checkouts of FastAPI (249 files), Go RealWorld (40), the Supabase starter (83) and Taxonomy (187). Taxonomy reported a partial parse of `components/mdx-card.tsx`. All four runs made zero provider calls. The OpenRouter credit check still showed no positive balance, so the live AI acceptance items below remain open.
+
 - A fresh checkout at `57e229c` installed with the frozen lockfile and passed 127 tests before any build output was present.
 - The loopback integration test indexes a temporary repository through the real engine and provider adapter. It validates summaries, flow edges, a feature changeability card and the overview, then consumes found and absent answers through the HTTP Ask stream. A warm run made zero provider requests, a single-file edit regenerated one file summary, and English and Turkish records coexisted.
 - Real HTTP tests cover the project token, node IDs in URLs, streaming and reconnection, static delivery and port fallback. The in-memory MCP client lists ten tools and retrieves a blast radius from the server.

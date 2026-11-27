@@ -15,7 +15,7 @@ export interface TextRequest {
   maxOutputTokens?: number;
 }
 export interface ObjectRequest<T> extends TextRequest {
-  schema: z.ZodType<T, z.ZodTypeDef, any>;
+  schema: z.ZodType<T>;
   schemaName: string;
 }
 export interface ChatMessage {
