@@ -166,6 +166,7 @@ export const DiffImpactDTO = z.object({
 export type DiffImpactDTO = z.infer<typeof DiffImpactDTO>;
 
 export const XRayDTO = z.object({
+  summaryMeta: z.object({ model: z.string(), createdAt: z.number() }).nullable().optional(),
   node: NodeDTO,
   summary: FileSummary.or(ModuleSummary).nullable(),
   symbolPurpose: z.string().nullable(),
