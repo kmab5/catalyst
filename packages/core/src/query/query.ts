@@ -12,7 +12,6 @@ import {
   type FindResultDTO,
   type SearchResultDTO,
 } from '@catalyst/shared';
-import { posix } from 'node:path';
 import type { QueryApi } from './types.js';
 import type { Store } from '../store/index.js';
 import { LocalPathSource } from '../project/local.js';
@@ -26,13 +25,15 @@ export function createQueryApi(
   source: LocalPathSource,
   project: () => ProjectDTO,
 ): QueryApi {
-  let cached: Catalog | undefined,
-    writes = -1;
+  let cached: Catalog | undefined, revision = '';
   function c() {
-    const changes = store.one<{ n: number }>('SELECT total_changes() n')!.n;
-    if (!cached || changes !== writes) {
+    // total_changes is local to this connection. data_version also sees CLI/MCP writes.
+    const changes = store.one<{ revision: string }>(
+      "SELECT total_changes() || ':' || data_version AS revision FROM pragma_data_version"
+    )!.revision;
+    if (!cached || changes !== revision) {
       cached = catalog(store);
-      writes = changes;
+      revision = changes;
     }
     return cached;
   }
@@ -69,10 +70,10 @@ export function createQueryApi(
       .filter((f) => f.rule === 'cycle')
       .flatMap((f) => {
         const ids = f.evidence.cycle ?? f.evidence.nodeIds ?? [],
-          key = [...ids].sort().join('\n');
+          key = [...new Set(ids)].sort().join('\n');
         if (cycleKeys.has(key)) return [];
         cycleKeys.add(key);
-        const nodes = ids.flatMap((id) => (data.nodes.has(id) ? [ref(need(data, id))] : []));
+        const nodes = [...new Set(ids)].flatMap((id) => (data.nodes.has(id) ? [ref(need(data, id))] : []));
         return [{ id: f.id, nodes, size: nodes.length }];
       });
     return {
