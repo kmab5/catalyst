@@ -7,6 +7,7 @@ import { PROMPT_VERSION } from './defaults.js';
 import { redactSecrets, privatePath } from './redact.js';
 export type Db = Database.Database;
 export interface FileRow {
+  tier: number;
   path: string;
   loc: number;
   hash: string;
@@ -56,7 +57,7 @@ export class Snapshot {
   ) {
     this.files = rows<FileRow>(
       db,
-      'SELECT path,loc,hash,language,size_bytes FROM files WHERE tier>0 ORDER BY path',
+      'SELECT path,loc,hash,language,size_bytes,tier FROM files WHERE tier>0 ORDER BY path',
     ).filter((f) => !privatePath(f.path));
     for (const n of rows<NodeRow>(db, "SELECT * FROM nodes WHERE kind!='feature' ORDER BY id")) {
       this.nodes.set(n.id, n);

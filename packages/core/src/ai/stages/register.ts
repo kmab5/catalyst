@@ -6,6 +6,7 @@ import { summarize, rollup, type StageContext } from './summarize.js';
 import { discover, deterministicFeatures, saveFeatures } from './features.js';
 import { changeabilityFacts, fallbackCard, grade } from './changeability.js';
 import { overview } from './overview.js';
+import { extractTier3 } from './tier3.js';
 export function writeDeterministicFeatures(db: Db, lang: Lang = 'en') {
   const s = new Snapshot(db, lang),
     features = deterministicFeatures(s);
@@ -20,11 +21,12 @@ export async function runAiStages(options: {
   root: string;
   client: LLMClient;
   lang: Lang;
+  tier3?: boolean;
   signal?: AbortSignal;
   onProgress?: (stage: ProgressEvent['stage'], done: number, total: number, degraded?: boolean) => void;
 }) {
-  const { db, root, client, lang, signal, onProgress } = options,
-    s = new Snapshot(db, lang);
+  const { db, root, client, lang, signal, onProgress } = options;
+  let s = new Snapshot(db, lang);
   const errors: string[] = [];
   let partial = false;
   let features: Feature[] = [];
@@ -78,6 +80,10 @@ export async function runAiStages(options: {
     };
     switch (stage) {
       case 'summarize':
+        if (options.tier3 === true && s.files.some((f) => f.tier === 3)) {
+          s = await extractTier3(context);
+          context.s = s;
+        }
         await summarize(context);
         break;
       case 'rollup':

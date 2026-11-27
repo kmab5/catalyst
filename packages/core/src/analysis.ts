@@ -5,6 +5,7 @@ import {scan,type ScanOptions,type SourceFile} from './scan/scanner.js';
 import {loadGrammars} from './parse/grammars.js';
 import {tsAdapter,ADAPTER_VERSION} from './parse/ts-adapter.js';
 import {pyAdapter} from './parse/py-adapter.js';
+import {goAdapter} from './parse/go-adapter.js';
 import type {ParsedFile} from './parse/types.js';
 import {link} from './resolve/link.js';
 import {detect} from './detect/index.js';
@@ -40,10 +41,10 @@ export async function analyze(root:string,opts:AnalysisOptions={}):Promise<Analy
       if(!model.nodes.has(id)){model.node(id,parts[i-1]!);model.edge(ids.dir(parts.slice(0,i-1).join('/')),id,'contains');}
     }
     const id=ids.file(f.path);
-    model.node(id,parts.at(-1)!,{filePath:f.path,tier:f.tier,metrics:{loc:f.loc},data:{language:f.language,isTest:/(?:^|\/)(?:__tests__|tests?)\/|\.(?:test|spec)\.|(?:^|\/)test_[^/]+\.py$|_test\.py$/.test(f.path)}});
+    model.node(id,parts.at(-1)!,{filePath:f.path,tier:f.tier,metrics:{loc:f.loc},data:{language:f.language,isTest:/(?:^|\/)(?:__tests__|tests?)\/|\.(?:test|spec)\.|(?:^|\/)test_[^/]+\.py$|_test\.(?:py|go)$/.test(f.path)}});
     model.edge(ids.dir(parts.slice(0,-1).join('/')),id,'contains',f.path);
   }
-  const toParse=files.filter(f=>f.tier===1&&f.language!=='prisma');
+  const toParse=files.filter(f=>f.language==='go'&&f.tier===2||f.tier===1&&f.language!=='prisma');
   const queue=toParse.filter(f=>{
     const cached=opts.previous?.parsed[f.path],previous=prior.get(f.path);
     if(!cached||!previous||previous.parseError||previous.parsedHash!==f.hash+':'+ADAPTER_VERSION)return true;
@@ -55,10 +56,14 @@ export async function analyze(root:string,opts:AnalysisOptions={}):Promise<Analy
     let last=Date.now();
     for(const [i,f] of queue.entries()){
       opts.signal?.throwIfAborted();
-      const parser=await grammars.parser(f.language);
+      const parser=await grammars.parser(f.language).catch(error=>{
+        if(f.language!=='go')throw error;
+        f.tier=opts.tier3?3:0;f.parseError='grammar_unavailable';model.node(ids.file(f.path),posix.basename(f.path),{tier:f.tier});return null;
+      });
       try {
         if(parser){
-          const p=(f.language==='python'?pyAdapter:tsAdapter).parse({parser,path:f.path,source:f.source});
+          const adapter=f.language==='go'?goAdapter:f.language==='python'?pyAdapter:tsAdapter;
+          const p=adapter.parse({parser,path:f.path,source:f.source});
           parsed[f.path]=p;f.parseError=p.partial?'partial':null;f.parsedHash=f.hash+':'+ADAPTER_VERSION;
         }
       } catch(error){f.parseError=error instanceof Error?error.message:'parse_failed';}

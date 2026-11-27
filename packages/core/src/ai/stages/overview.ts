@@ -37,6 +37,10 @@ export async function overview(features: Feature[], { s, client, attempt }: Stag
     })),
     modules: [...s.summaries.values()]
       .filter((r) => !('role' in r.value))
+      .sort(
+        (a, b) =>
+          b.value.nodeId.length - a.value.nodeId.length || a.value.nodeId.localeCompare(b.value.nodeId),
+      )
       .slice(-8)
       .map((r) => r.value.purpose),
     routes,

@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, expect, test } from 'vitest';
@@ -337,4 +338,112 @@ test('Ask tools redact indexed snippets and reject secret path lookup', async ()
   } as unknown as QueryApi);
   expect(JSON.stringify(await tools.search!.execute({ query: 'api' }))).not.toContain('sk_live_');
   expect(await tools.read_source!.execute({ path: '.env.example' })).toHaveProperty('error');
+});
+
+test('Tier 3 requires opt-in, grounds symbol ranges and edges, and reuses cached extraction', async () => {
+  fixture();
+  const path = 'users.sql',
+    content =
+      'CREATE TABLE users (id integer);\nCREATE VIEW active AS SELECT id FROM users;\n-- sk_live_0123456789abcdef\n';
+  writeFileSync(join(root, path), content);
+  db.prepare("INSERT INTO files(path,hash,language,tier,loc,size_bytes) VALUES(?,?,'sql',3,3,?)").run(
+    path,
+    createHash('sha1').update(content).digest('hex'),
+    content.length,
+  );
+  node('file:' + path, 'file', path);
+  const fake = new FakeProvider({
+    objects: {
+      FileSummary: summary,
+      Tier3Extraction: () => ({
+        symbols: [
+          {
+            name: 'active',
+            symbolKind: 'variable',
+            startLine: 2,
+            endLine: 2,
+            exported: true,
+            confidence: 1,
+          },
+          { name: 'imaginary', symbolKind: 'class', startLine: 1, endLine: 2, exported: true },
+          { name: 'users', symbolKind: 'class', startLine: 999, endLine: 999, exported: true },
+        ],
+        edges: [
+          { fromSymbol: 'active', toName: 'users', kind: 'reads', confidence: 1 },
+          { fromSymbol: 'imaginary', toName: 'users', kind: 'writes' },
+          { fromSymbol: 'active', toName: 'unknown', kind: 'calls' },
+        ],
+        summary: summary('users'),
+      }),
+    },
+  });
+  const client = new LLMClient(fake, db);
+  await runAiStages({ db, root, client, lang: 'en' });
+  expect(fake.calls.some((c) => c.schemaName === 'Tier3Extraction')).toBe(false);
+  expect(
+    fake.calls
+      .filter((c) => c.schemaName === 'FileSummary')
+      .every((c) => !c.prompt.includes('CREATE VIEW')),
+  ).toBe(true);
+  await runAiStages({ db, root, client, lang: 'en', tier3: true });
+  expect(db.prepare("SELECT provenance FROM nodes WHERE id='db:sql:users'").get()).toEqual({
+    provenance: 'ast',
+  });
+  expect(
+    db.prepare("SELECT name,confidence FROM nodes WHERE file_path=? AND kind='symbol'").all(path),
+  ).toEqual([{ name: 'active', confidence: 0.9 }]);
+  expect(
+    db
+      .prepare("SELECT src,dst,provenance,confidence FROM edges WHERE kind='reads' AND file_path=?")
+      .get(path),
+  ).toEqual({
+    src: 'sym:users.sql#active',
+    dst: 'db:sql:users',
+    provenance: 'inferred',
+    confidence: 0.9,
+  });
+  expect(fake.calls.filter((c) => c.schemaName === 'Tier3Extraction')[0]?.prompt).not.toContain(
+    'sk_live_',
+  );
+  await runAiStages({ db, root, client, lang: 'en', tier3: true });
+  expect(fake.calls.filter((c) => c.schemaName === 'Tier3Extraction')).toHaveLength(1);
+});
+
+test('independent file components fill provider slots while importers await dependencies', async () => {
+  fixture();
+  for (let i = 0; i < 6; i++) {
+    const path = 'lib/independent-' + i + '.ts',
+      source = 'const x=1;\nconst y=2;\nexport const sum=x+y;';
+    writeFileSync(join(root, path), source);
+    db.prepare(
+      "INSERT INTO files(path,hash,language,tier,loc,size_bytes) VALUES(?,?,'typescript',1,3,?)",
+    ).run(path, createHash('sha1').update(source).digest('hex'), source.length);
+    node('file:' + path, 'file', path);
+    edge('dir:lib', 'file:' + path, 'contains');
+  }
+  const fake = stageProvider(),
+    generate = fake.generateObject.bind(fake);
+  let active = 0,
+    peak = 0,
+    leafFinished = false;
+  fake.generateObject = async (req) => {
+    if (req.schemaName !== 'FileSummary') return generate(req);
+    if (req.prompt.startsWith('FILE lib/main.ts')) expect(leafFinished).toBe(true);
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await delay(60);
+      return await generate(req);
+    } finally {
+      active--;
+      if (req.prompt.startsWith('FILE lib/leaf.ts')) leafFinished = true;
+    }
+  };
+  const client = new LLMClient(fake, db, { concurrency: 4 });
+  const result = await runAiStages({ db, root, client, lang: 'en' });
+  expect(result.errors).toEqual([]);
+  expect(peak).toBe(4);
+  const count = fake.calls.length;
+  await runAiStages({ db, root, client, lang: 'en' });
+  expect(fake.calls).toHaveLength(count);
 });
