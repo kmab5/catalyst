@@ -14,13 +14,17 @@ test('selecting Groq replaces the previous models and saves a Groq credential', 
   installMockFetch(fixture, {
     'PUT /api/settings': async req => {
       update = await req.json();
-      return Response.json(fixture.settings);
+      return Response.json({ ...fixture.settings, provider: { ...fixture.settings.provider, type: 'groq' },
+        models: { fast: 'openai/gpt-oss-20b', smart: 'openai/gpt-oss-120b' } });
     },
   });
   renderPage(<Settings />);
   await userEvent.click(await screen.findByRole('radio', { name: /^Groq\b/i }));
+  expect(screen.getByText('Save this change to use Groq for new AI requests.')).toBeVisible();
+  expect(screen.getByRole('radio', { name: /OpenRouter Active/i })).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('API key'), 'synthetic-groq');
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save provider' }));
+  expect(await screen.findByRole('radio', { name: /Groq Active/i })).toBeChecked();
   expect(update).toMatchObject({
     provider: { type: 'groq', apiKey: 'synthetic-groq' },
     models: { fast: 'openai/gpt-oss-20b', smart: 'openai/gpt-oss-120b' },

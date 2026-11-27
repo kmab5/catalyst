@@ -234,7 +234,7 @@ export function Settings() {
       )}
       {updateMut.error && <ErrorCard error={updateMut.error} />}
       {testMut.error && <ErrorCard error={testMut.error} />}
-      <form onChange={() => setSavedNotice(false)} onSubmit={handleSave} className="space-y-8">
+      <form onChange={() => { setSavedNotice(false); testMut.reset(); }} onSubmit={handleSave} className="space-y-8">
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium">{t('settings.provider')}</h2>
@@ -286,6 +286,11 @@ export function Settings() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{opt.title}</span>
+                    {settings?.provider?.type === opt.id && (
+                      <span className="rounded bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] text-[var(--accent)]">
+                        {t('settings.activeProvider')}
+                      </span>
+                    )}
                     {opt.badge && (
                       <span className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
                         {opt.badge}
@@ -386,7 +391,18 @@ export function Settings() {
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          {testingDraft && providerType !== 'none' && (
+            <p role="status" className="text-sm text-[var(--text-muted)]">
+              {t('settings.pendingProvider', { provider: providerOptions.find(option => option.id === providerType)!.title })}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            {testingDraft && (
+              <button type="submit" disabled={updateMut.isPending}
+                className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white">
+                {t('settings.applyProvider')}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => testMut.mutate(testConfig?.success ? testConfig.data : undefined)}
