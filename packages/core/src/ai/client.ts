@@ -25,6 +25,7 @@ export class LLMClient {
   private exceeded = false;
   private authFailed = false;
   private slowUntil = 0;
+  private unsupportedSchemas = new Set<string>();
   private stats = { tokensIn: 0, tokensOut: 0, calls: 0, cacheHits: 0, costUsd: null as number | null };
   readonly repairs: Record<string, number> = {};
   readonly concurrency: number;
@@ -195,19 +196,37 @@ export class LLMClient {
     }
     let result: T | undefined;
     let invalid: unknown;
-    if (this.provider.supportsStructuredOutput) {
+    const schemaKey = this.provider.modelFor(r.tier) + '/' + r.schemaName;
+    if (this.provider.supportsStructuredOutput && !this.unsupportedSchemas.has(schemaKey)) {
       try {
         const response = await this.call(r, (signal) => this.provider.generateObject({ ...r, signal }));
         invalid = response.object;
         result = parseOutput(response.object, r.schema);
       } catch (error) {
+        // Some compatible endpoints reject particular JSON Schema keywords. Retry using text
+        // only for that protocol error. Invalid keys and other bad requests still fail immediately.
+        const http = error as { statusCode?: number; message?: string; responseBody?: string };
+        const unsupported =
+          http.statusCode === 400 &&
+          /response_format|json.schema|structured.outputs?/i.test(
+            [http.message, http.responseBody].join(' '),
+          );
+        if (unsupported) this.unsupportedSchemas.add(schemaKey);
         if (
+          !unsupported &&
           invalid === undefined &&
           !NoObjectGeneratedError.isInstance(error) &&
           !(error instanceof ZodError)
         )
           throw error;
-        if (NoObjectGeneratedError.isInstance(error)) invalid = error.text;
+        if (NoObjectGeneratedError.isInstance(error)) {
+          invalid = error.text;
+          if (error.usage)
+            this.account(r.tier, {
+              inputTokens: error.usage.inputTokens ?? 0,
+              outputTokens: error.usage.outputTokens ?? 0,
+            });
+        }
       }
     }
     if (result === undefined) {

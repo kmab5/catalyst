@@ -1,4 +1,4 @@
-import { Feature, ids, type Lang } from '@catalyst/shared';
+import { Feature, FeatureMember, Flow, FlowStep, ids, type Lang } from '@catalyst/shared';
 import { z } from 'zod';
 import { Snapshot, rows, bucket, type Db } from '../context.js';
 import { cleanStrings } from '../ask/citations.js';
@@ -210,7 +210,30 @@ export async function discover({ s, client, attempt }: StageContext) {
     saveFeatures(s, features, inputHash);
     return features;
   }
-  const schema = z.object({ features: z.array(Feature) });
+  // Ask only for model-authored fields. The graph supplies IDs, couplings and flow verification.
+  const candidate = Feature.pick({
+    name: true,
+    category: true,
+    summary: true,
+    description: true,
+    entryPoints: true,
+    confidence: true,
+  }).extend({
+    summary: z.string().max(300).describe('One plain sentence.'),
+    description: z.string().max(700).describe('A short paragraph.'),
+    members: z.array(FeatureMember.pick({ nodeId: true, role: true })),
+    flows: z
+      .array(
+        Flow.pick({ name: true, trigger: true }).extend({
+          steps: z
+            .array(FlowStep.pick({ nodeId: true, action: true }))
+            .min(2)
+            .max(8),
+        }),
+      )
+      .max(3),
+  });
+  const schema = z.object({ features: z.array(candidate) });
   const batchSize = Math.min(
     400,
     Math.max(1, Math.floor((index.length * 65000) / Math.max(1, JSON.stringify(index).length))),
@@ -239,7 +262,22 @@ export async function discover({ s, client, attempt }: StageContext) {
           }),
         }),
       );
-      if (result) outputs.set(i, result.features);
+      if (result)
+        outputs.set(
+          i,
+          result.features.map((f) => ({
+            ...f,
+            id: '',
+            dependsOn: [],
+            services: [],
+            dataModels: [],
+            flows: f.flows.map((flow) => ({
+              ...flow,
+              id: '',
+              steps: flow.steps.map((step) => ({ ...step, edgeVerified: false })),
+            })),
+          })),
+        );
       else complete = false;
     },
   );

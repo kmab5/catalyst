@@ -40,6 +40,13 @@ export class SdkProvider implements LLMProvider {
     return this.models[tier];
   }
   private options(r: TextRequest) {
+    const name = this.modelFor(r.tier);
+    const knownClaude = /^(?:anthropic\/)?claude-(haiku|sonnet)-5[.-]5$/.test(name);
+    // Limit hidden reasoning on high-volume structured tasks. Other configured models keep their defaults.
+    const effort = r.tier === 'fast' ? 'low' : 'medium';
+    const providerOptions: NonNullable<Parameters<typeof generateText>[0]['providerOptions']> = {};
+    if (knownClaude && this.id === 'openrouter') providerOptions.openrouter = {reasoning: {effort}};
+    if (knownClaude && this.id === 'anthropic') providerOptions.anthropic = {effort};
     return {
       model: this.model(this.modelFor(r.tier)),
       system: r.system,
@@ -47,6 +54,7 @@ export class SdkProvider implements LLMProvider {
       maxOutputTokens: r.maxOutputTokens,
       abortSignal: r.signal,
       maxRetries: 0,
+      providerOptions,
     };
   }
   async generateObject<T>(r: ObjectRequest<T>) {

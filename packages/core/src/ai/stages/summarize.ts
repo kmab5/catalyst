@@ -11,6 +11,16 @@ import { hash, type LLMClient } from '../client.js';
 import { preamble } from '../prompts/shared.js';
 import { PROMPT_VERSION } from '../defaults.js';
 import { runReady } from './schedule.js';
+const conciseSummary = FileSummary.extend({
+  purpose: FileSummary.shape.purpose.max(350).describe('One or two short sentences.'),
+  details: FileSummary.shape.details.max(1000).describe('Up to six short sentences.'),
+  positionInApp: FileSummary.shape.positionInApp
+    .max(350)
+    .describe('One short explanation of who triggers this file.'),
+  symbols: FileSummary.shape.symbols
+    .max(8)
+    .describe('Up to eight key symbols, with a short phrase for each.'),
+});
 export interface StageContext {
   s: Snapshot;
   client: LLMClient;
@@ -71,7 +81,7 @@ export async function summarize({ s, client, root, attempt }: StageContext) {
             } else {
               summary = await client.object('summarize', {
                 tier: 'fast',
-                schema: FileSummary,
+                schema: conciseSummary,
                 schemaName: 'FileSummary',
                 system:
                   preamble(s.lang) +

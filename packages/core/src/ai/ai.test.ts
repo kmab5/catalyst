@@ -90,6 +90,19 @@ test('invalid repair is not cached', async () => {
   expect(fake.calls).toHaveLength(2);
   expect(db.prepare('SELECT * FROM llm_cache').all()).toHaveLength(0);
 });
+
+test('rejecting native structured output switches that schema to validated JSON text', async () => {
+  const provider = new FakeProvider({ texts: ['{"n":1}', '{"n":2}'] });
+  let native = 0;
+  provider.generateObject = async () => {
+    native++;
+    throw Object.assign(new Error('Invalid response_format schema'), { statusCode: 400 });
+  };
+  const client = new LLMClient(provider, db);
+  expect(await client.object('summarize', req)).toEqual({ n: 1 });
+  expect(await client.object('summarize', { ...req, prompt: 'another file' })).toEqual({ n: 2 });
+  expect(native).toBe(1);
+});
 test('budget and cancellation stop outbound calls', async () => {
   const p = new FakeProvider({ objects: { N: [{ n: 1 }] } });
   const client = new LLMClient(p, db, { budgetUsd: 0.00001 });
