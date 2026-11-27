@@ -57,7 +57,7 @@ node packages/cli/dist/index.js serve ../my-project
 
 For summaries, feature explanations and Ask, open **Settings**, select a provider, and test the connection. Catalyst supports OpenRouter, Anthropic, OpenAI-compatible endpoints and a signed-in Claude Code CLI. You can also supply an API key through `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. Choose models available to your provider account and set a per-run budget if needed.
 
-To try the fixture with OpenRouter's free models, use the same PowerShell session as the local walkthrough. Put `OPENROUTER_API_KEY` in the checkout's ignored `.env`. Run the following after stopping the structural server. Both model tiers use the free router. Indexing sends selected fixture content to OpenRouter. [OpenRouter free models](https://openrouter.ai/openrouter/free)
+To try the fixture with OpenRouter's free models, use the same PowerShell session as the local walkthrough. Put `OPENROUTER_API_KEY` in the checkout's ignored `.env`. Run the following after stopping the structural server. New OpenRouter configurations default to the free router. These session overrides also select it when a different model was previously saved. Indexing sends selected fixture content to OpenRouter. [OpenRouter free models](https://openrouter.ai/openrouter/free)
 
 ```powershell
 $env:CATALYST_PROVIDER = "openrouter"

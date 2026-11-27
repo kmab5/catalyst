@@ -1,6 +1,6 @@
 export const DEFAULT_MODELS = {
   anthropic: { fast: 'claude-haiku-5-5', smart: 'claude-sonnet-5-5' },
-  openrouter: { fast: 'anthropic/claude-haiku-5.5', smart: 'anthropic/claude-sonnet-5.5' },
+  openrouter: { fast: 'openrouter/free', smart: 'openrouter/free' },
   'openai-compatible': { fast: 'gpt-4o-mini', smart: 'gpt-4o' },
   'claude-code': { fast: 'haiku', smart: 'sonnet' },
 } as const;

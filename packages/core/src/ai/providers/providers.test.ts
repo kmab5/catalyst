@@ -6,12 +6,21 @@ import { EventEmitter } from 'node:events';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { createProvider } from './factory.js';
+import { price } from '../pricing.js';
 import { ClaudeCodeProvider } from './claude-code.js';
 import * as childProcess from 'node:child_process';
 vi.mock('node:child_process', async (original) => ({
   ...(await original<typeof import('node:child_process')>()),
   spawn: vi.fn(),
 }));
+test('OpenRouter selects zero-cost models for both tiers by default', () => {
+  const provider = createProvider({ type: 'openrouter', apiKey: 'test', baseUrl: 'https://openrouter.ai/api/v1' });
+  for (const tier of ['fast', 'smart'] as const) {
+    expect(provider.modelFor(tier)).toBe('openrouter/free');
+    expect(price(provider.modelFor(tier), 1000, 250)).toBe(0);
+  }
+});
+
 test('Claude Code writes the prompt to stdin, disables tools and reads assistant JSON', async () => {
   let stdin = '';
   const child = Object.assign(new EventEmitter(), {

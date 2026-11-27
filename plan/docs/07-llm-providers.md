@@ -85,8 +85,8 @@ This is the same order as [12 §2](12-config-and-privacy.md), which holds the ca
 
 | Tier | Used for | Default (class) | OpenRouter example slug *(verify at build time)* | Anthropic example *(verify)* | Claude Code alias |
 |---|---|---|---|---|---|
-| `fast` | file summaries, roll-ups, query expansion, Tier 3 extraction | Claude Haiku 5.5 | `anthropic/claude-haiku-5.5` | `claude-haiku-5-5` | `haiku` |
-| `smart` | features, overview, changeability, Ask | Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | `claude-sonnet-5-5` | `sonnet` |
+| `fast` | file summaries, roll-ups, query expansion, Tier 3 extraction | Claude Haiku 5.5 | `openrouter/free` | `claude-haiku-5-5` | `haiku` |
+| `smart` | features, overview, changeability, Ask | Claude Sonnet 5.5 | `openrouter/free` | `claude-sonnet-5-5` | `sonnet` |
 
 - The model IDs are **plain strings in config** (`models.fast` / `models.smart` in `~/.catalyst/config.json`; see 12 §2). The defaults live in one constant (`core/ai/defaults.ts`), and a newer model can be swapped in without a code change.
 - Users can point both tiers at the same model (e.g. a single Ollama model).

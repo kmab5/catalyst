@@ -14,7 +14,7 @@ import { t } from '@/i18n/t';
 import { cn } from '@/lib/cn';
 
 const MODEL_SUGGESTIONS: Record<ProviderType, { fast: string; smart: string }> = {
-  openrouter: { fast: 'anthropic/claude-haiku-5.5', smart: 'anthropic/claude-sonnet-5.5' },
+  openrouter: { fast: 'openrouter/free', smart: 'openrouter/free' },
   anthropic: { fast: 'claude-haiku-5-5', smart: 'claude-sonnet-5-5' },
   'openai-compatible': { fast: 'gpt-4o-mini', smart: 'gpt-4o' },
   'claude-code': { fast: 'haiku', smart: 'sonnet' },
