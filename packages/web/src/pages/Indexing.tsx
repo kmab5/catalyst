@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { api } from '@/api/client';
 import { useOverview, useProject, useProvidersDetect, useSettings } from '@/api/hooks/queries';
 import { useRunEvents } from '@/api/hooks/useRunEvents';
+import { ProviderDisclosure } from '@/components/ProviderDisclosure';
 import { EstimateDialog } from '@/components/EstimateDialog';
 import { SseProgress } from '@/components/SseProgress';
 import { ErrorCard } from '@/components/ErrorCard';
@@ -93,6 +94,12 @@ function ProjectIndexing({ pid }: { pid: string }) {
         </h1>
         <p className="text-sm text-[var(--text-muted)]">{t('indexing.subtitle')}</p>
       </header>
+
+      {settings?.provider && (
+        <p className="text-sm text-[var(--text-muted)]">
+          <ProviderDisclosure provider={settings.provider} />
+        </p>
+      )}
 
       {hasDegraded && (
         <div

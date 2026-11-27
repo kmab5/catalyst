@@ -52,6 +52,7 @@ test('shows stage counts, degradation, and navigates on completion', async () =>
       degraded: true,
     }),
   );
+  expect(await screen.findByText(/sends file contents and summaries to OpenRouter/i)).toBeVisible();
   expect(screen.getByText('129/129')).toBeVisible();
   expect(screen.getByText(/Some explanations failed/)).toBeVisible();
   act(() => TestEvents.latest!.send({ runId, stage: 'done', done: 1, total: 1 }));

@@ -8,6 +8,7 @@ import {
 } from '@/api/hooks/queries';
 import { ProviderConfig, type Lang, type ProviderType, type SettingsUpdate } from '@/api/contract';
 import { PageSkeleton } from '@/components/Skeleton';
+import { ProviderDisclosure } from '@/components/ProviderDisclosure';
 import { ErrorCard } from '@/components/ErrorCard';
 import { t } from '@/i18n/t';
 import { cn } from '@/lib/cn';
@@ -505,6 +506,7 @@ export function Settings() {
         </section>
 
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--text-muted)]">
+          {settings?.provider && <><ProviderDisclosure provider={settings.provider} />{' '}</>}
           {t('settings.privacy')}{' '}
           <a
             href="https://github.com/kmab5/catalyst/blob/main/plan/docs/12-config-and-privacy.md"

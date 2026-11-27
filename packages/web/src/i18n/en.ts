@@ -137,7 +137,10 @@ export const en = {
   'settings.models': 'Models',
   'settings.testConnection': 'Test connection',
   'settings.privacy':
-    'Your code is sent only to the provider above. Catalyst has no server and no telemetry.',
+    'Catalyst collects no telemetry.',
+  'provider.disclosure': 'When AI explanations are enabled, Catalyst sends file contents and summaries to {provider}.',
+  'estimate.files': '{needed} of {total} files need a summary.',
+  'estimate.tokens': 'Estimated tokens: {input} input and {output} output.',
   'indexing.interrupted': 'Indexing was interrupted. Try again to continue.',
   'estimate.title': 'Estimate for AI explanations',
   'estimate.calls': '≈ {count} AI calls',

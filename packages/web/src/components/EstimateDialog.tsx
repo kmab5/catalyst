@@ -42,6 +42,8 @@ export function EstimateDialog({
             {estimate.data.costUsd !== null &&
               ' · ' + t('estimate.cost', { cost: estimate.data.costUsd.toFixed(2) })}
           </p>
+          <p>{t('estimate.files', { needed: estimate.data.filesNeedingSummary, total: estimate.data.files })}</p>
+          <p>{t('estimate.tokens', { input: estimate.data.tokens.in, output: estimate.data.tokens.out })}</p>
           <p className="text-[var(--text-muted)]">
             {[estimate.data.model.fast, estimate.data.note].filter(Boolean).join(' · ')}
           </p>

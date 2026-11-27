@@ -32,6 +32,8 @@ test.each([
     );
     expect(await screen.findByText(/14 AI calls/)).toBeVisible();
     expect(screen.getByText(expected)).toBeVisible();
+    expect(screen.getByText('10 of 12 files need a summary.')).toBeVisible();
+    expect(screen.getByText('Estimated tokens: 2000 input and 300 output.')).toBeVisible();
     expect(proceed).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(proceed).toHaveBeenCalledOnce();

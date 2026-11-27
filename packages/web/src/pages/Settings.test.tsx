@@ -19,6 +19,7 @@ test('shows only the masked key and can remove it explicitly', async () => {
   });
   renderPage(<Settings />);
   expect(await screen.findByText(/sk-or-…9f2a/)).toBeVisible();
+  expect(screen.getByText(/sends file contents and summaries to OpenRouter/i)).toBeVisible();
   expect(screen.getByLabelText('API key')).toHaveValue('');
   await userEvent.click(screen.getByRole('button', { name: 'Remove saved key' }));
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
