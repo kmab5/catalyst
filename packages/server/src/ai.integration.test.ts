@@ -209,6 +209,10 @@ test('Project indexing and Ask SSE use the real SDK transport, persistent graph 
     expect(XRayDTO.parse(q.getXRay(file, 'en')).summary).toMatchObject({
       purpose: 'Purpose of app/api/webhooks/stripe/route.ts',
     });
+    expect(XRayDTO.parse(q.getXRay(handler, 'en')).summaryMeta).toEqual({
+      model: expect.any(String),
+      createdAt: expect.any(Number),
+    });
     expect(q.getXRay(ids.dir('lib'), 'en').summary).toMatchObject({ purpose: 'Directory summary' });
     const billing = FeatureDetailDTO.parse(q.getFeature('feature:billing', 'en'));
     expect(billing.flows[0]?.steps.map((s) => s.edgeVerified)).toEqual([true, true, true]);
