@@ -1,1 +1,7 @@
 .env
+node_modules/
+dist/
+.catalyst/
+*.tsbuildinfo
+.DS_Store
+# Golden testbeds live outside the repository in ../catalyst-testbeds.
