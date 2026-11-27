@@ -8,16 +8,19 @@ import { renderWorkflow } from '@/test/renderWorkflow';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 test('the stopped-server banner clears and retries active failed queries after health recovers', async () => {
+  const timers = vi.spyOn(window, 'setInterval');
   vi.stubGlobal('fetch', () => Promise.reject(new TypeError('offline')));
   renderWorkflow('/features');
   expect(await screen.findByText(/Catalyst isn't running/)).toBeVisible();
   installMockFetch();
-  await waitFor(() => expect(screen.queryByText(/Catalyst isn't running/)).toBeNull(), {
-    timeout: 4800,
-  });
+  const pulse = timers.mock.calls.find(([, delay]) => delay === 3000)?.[0];
+  if (typeof pulse !== 'function') throw new Error('Health recovery polling was not scheduled');
+  await act(async () => { pulse(); });
+  await waitFor(() => expect(screen.queryByText(/Catalyst isn't running/)).toBeNull());
   expect((await screen.findAllByTestId('feature-row')).length).toBeGreaterThan(0);
 });
 test('a new run header offers a refresh without discarding the current route', async () => {
