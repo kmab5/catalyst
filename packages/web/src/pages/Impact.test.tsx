@@ -47,3 +47,17 @@ test('shows affected features and routes and carries the comparison into Graph',
   expect(router.state.location.pathname).toBe(projectPath + '/graph');
   expect(router.state.location.state.changedIds).toContain(file.id);
 });
+
+test('explains when an indexed folder has no Git working tree', async () => {
+  vi.stubGlobal('fetch', fetch);
+  const f = getFixture();
+  installMockFetch(f, {
+    ['POST /api/projects/' + f.projects[0]!.id + '/impact/diff']: () => Response.json({
+      unavailable: 'not-a-work-tree', base: 'HEAD', head: 'WORKTREE', changedFiles: [],
+      changedNodes: [], affected: { nodes: [], features: [], routes: [] }, flagsTouched: [], narrative: null,
+    }),
+  });
+  renderWorkflow('/impact');
+  expect(await screen.findByRole('heading', { name: 'This folder has no Git working tree.' })).toBeVisible();
+  expect(screen.queryByRole('combobox')).toBeNull();
+});

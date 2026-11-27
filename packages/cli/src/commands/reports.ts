@@ -42,16 +42,21 @@ export async function impactCommand(
   options: { json?: boolean; base?: string; narrative?: boolean },
 ) {
   const project = await indexedProject(engine, deps, path);
-  if (options.narrative !== false && !hasProvider(engine.settings.get()))
-    throw new CliError(EXIT.NO_AI, 'Configure a provider or use --no-narrative.');
   const diff = {
     ...(await project.query.diffImpact({ base: options.base })),
     narrative: null as string | null,
   };
-  if (options.narrative !== false && project.diffNarrative)
-    diff.narrative = await project.diffNarrative(diff);
+  if (options.narrative !== false && diff.changedFiles.length) {
+    if (!hasProvider(engine.settings.get()))
+      throw new CliError(EXIT.NO_AI, 'Configure a provider or use --no-narrative.');
+    if (project.diffNarrative) diff.narrative = await project.diffNarrative(diff);
+  }
   if (options.json) deps.stdout.write(JSON.stringify(diff) + '\n');
-  else {
+  else if (diff.unavailable) {
+    deps.stdout.write(diff.unavailable === 'not-a-work-tree'
+      ? 'This folder has no Git working tree. Open a Git project to compare changes.\n'
+      : 'Install Git and restart Catalyst to compare changes.\n');
+  } else {
     const groups: [string, string[]][] = [
       ['Changed files', diff.changedFiles.map((file) => file.status + ' ' + file.path)],
       ['Changed symbols', diff.changedNodes.filter((node) => node.kind === 'symbol').map(location)],

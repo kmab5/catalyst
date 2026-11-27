@@ -197,6 +197,27 @@ describe('index lifecycle and queries', () => {
     expect((await project.index({ ai: false }).done).status).toBe('done');
     expect(project.query.find('neverUsed')).toEqual([]);
   });
+  it('compares a nested project before and after its first Git commit', async () => {
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
+    git('init');
+    await writeFile(join(dir, 'outside.ts'), 'export const outside = true;');
+    git('add', 'repo/lib/session.ts');
+    await project.index({ ai: false }).done;
+    const before = await project.query.diffImpact({});
+    expect(before.base).toBe('EMPTY_TREE');
+    expect(before.changedFiles).toContainEqual({ path: 'lib/session.ts', status: 'added' });
+    expect(before.changedFiles).toContainEqual({ path: 'package.json', status: 'added' });
+    expect(before.changedFiles.map(file => file.path)).not.toContain('outside.ts');
+
+    git('add', 'repo');
+    git('-c', 'user.name=Catalyst', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'Fixture');
+    expect((await project.query.diffImpact({})).changedFiles).toEqual([]);
+    await writeFile(join(root, 'lib/session.ts'), 'export const changed = true;');
+    expect((await project.query.diffImpact({ base: 'HEAD' })).changedFiles).toEqual([
+      { path: 'lib/session.ts', status: 'modified' },
+    ]);
+    await expect(project.query.diffImpact({ base: 'unknown-branch' })).rejects.toThrow('branch, tag, or commit');
+  });
   it('maps edited Git hunks to symbol and route impact', async () => {
     function git(...args: string[]) {
       execFileSync('git', args, { cwd: root, stdio: 'pipe' });

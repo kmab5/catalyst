@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { stat } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { ids, type DiffImpactDTO, type NodeRef } from '@catalyst/shared';
 import type { QueryApi } from './types.js';
@@ -9,25 +10,62 @@ export async function diffImpact(
   query: QueryApi,
   base?: string,
 ): Promise<Omit<DiffImpactDTO, 'narrative'>> {
-  async function git(args: string[]) {
-    try {
-      return (
-        await exec('git', ['-c', 'core.quotepath=false', ...args], {
-          cwd: root,
-          windowsHide: true,
-          maxBuffer: 16 * 1024 * 1024,
-        })
-      ).stdout;
-    } catch {
-      throw new CatalystError('BAD_REQUEST', 'Could not resolve the Git comparison');
-    }
+  function runGit(args: string[]) {
+    const command = exec('git', ['--literal-pathspecs', ...args], {
+      cwd: root,
+      windowsHide: true,
+      maxBuffer: 16 * 1024 * 1024,
+      env: { ...process.env, LC_ALL: 'C' },
+    });
+    command.child.stdin?.end();
+    return command.then((result) => result.stdout);
   }
-  const revision = (
-    await git(['rev-parse', '--verify', '--end-of-options', (base ?? 'HEAD') + '^{commit}'])
-  ).trim();
-  const target = base ? (await git(['merge-base', revision, 'HEAD'])).trim() : revision;
+  function git(args: string[]) {
+    return runGit(args).catch(() => {
+      throw new CatalystError('BAD_REQUEST', 'Git could not read the changes in this project.');
+    });
+  }
+  const unavailable = (reason: NonNullable<DiffImpactDTO['unavailable']>) => ({
+    base: base ?? 'HEAD',
+    head: 'WORKTREE',
+    unavailable: reason,
+    changedFiles: [],
+    changedNodes: [],
+    affected: { nodes: [], features: [], routes: [] },
+    flagsTouched: [],
+  });
+  try {
+    if ((await runGit(['rev-parse', '--is-inside-work-tree'])).trim() !== 'true')
+      return unavailable('not-a-work-tree');
+  } catch (error) {
+    const failure = error as { code?: string; stderr?: string };
+    if (failure.code === 'ENOENT') {
+      if (!(await stat(root).catch(() => null))?.isDirectory())
+        throw new CatalystError('BAD_REQUEST', 'The project folder is no longer available.');
+      return unavailable('git-not-installed');
+    }
+    if (failure.stderr?.includes('not a git repository')) return unavailable('not-a-work-tree');
+    throw new CatalystError('BAD_REQUEST', 'Git could not open this working tree. Check access to the project folder.');
+  }
+  const head = (await runGit(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).catch((error) => {
+    if (error.code === 1) return '';
+    throw new CatalystError('BAD_REQUEST', 'Git could not read HEAD.');
+  })).trim();
+  let target = head;
+  if (base) {
+    if (!head) throw new CatalystError('BAD_REQUEST', 'Create the first commit before comparing branches.');
+    const revision = await runGit(['rev-parse', '--verify', '--end-of-options', base + '^{commit}']).catch(() => {
+      throw new CatalystError('BAD_REQUEST', 'Git could not find that branch, tag, or commit.');
+    });
+    target = (await runGit(['merge-base', revision.trim(), head]).catch(() => {
+      throw new CatalystError('BAD_REQUEST', 'The selected commit and HEAD have no common ancestor.');
+    })).trim();
+  } else if (!head) {
+    // Git recognizes the empty tree in both SHA-1 and SHA-256 repositories.
+    target = (await git(['hash-object', '-t', 'tree', '--stdin'])).trim();
+  }
   const names = (
-    await git(['diff', '--no-ext-diff', '--name-status', '-z', '-M', target, '--'])
+    await git(['diff', '--relative', '--no-ext-diff', '--name-status', '-z', '-M', target, '--', '.'])
   ).split('\0');
   const changedFiles: DiffImpactDTO['changedFiles'] = [];
   const previousPaths = new Map<string, string>();
@@ -47,7 +85,7 @@ export async function diffImpact(
             : 'modified',
     });
   }
-  for (const path of (await git(['ls-files', '--others', '--exclude-standard', '-z']))
+  for (const path of (await git(['ls-files', '--others', '--exclude-standard', '-z', '--', '.']))
     .split('\0')
     .filter(Boolean))
     changedFiles.push({ path, status: 'added' });
@@ -66,15 +104,10 @@ export async function diffImpact(
       nodes = query.listNodes({ filePath: indexedPath });
     }
     if (!nodes.length) continue;
-    const patch = await git([
-      'diff',
-      '--no-ext-diff',
-      '--no-textconv',
-      '--unified=0',
-      target,
-      '--',
-      f.path,
-    ]);
+    const needsHunks = f.status === 'modified' && nodes.some((n) => n.kind === 'symbol');
+    const patch = needsHunks
+      ? await git(['diff', '--no-ext-diff', '--no-textconv', '--unified=0', target, '--', f.path])
+      : '';
     const ranges = [...patch.matchAll(/^@@ -([\d]+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)].map(
       (m) => {
         const start = Number(m[3]);
@@ -115,7 +148,7 @@ export async function diffImpact(
       }
   }
   return {
-    base: base ?? 'HEAD',
+    base: base ?? (head ? 'HEAD' : 'EMPTY_TREE'),
     head: 'WORKTREE',
     changedFiles,
     changedNodes: [...changed.values()],

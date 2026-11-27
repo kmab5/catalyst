@@ -1,5 +1,5 @@
 import { CatalystError } from '@catalyst/core';
-import { Lang, Severity, type DiffImpactDTO } from '@catalyst/shared';
+import { DiffImpactRequest, Lang, Severity, type DiffImpactDTO } from '@catalyst/shared';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { body, type ProjectEnv } from './common.js';
@@ -10,10 +10,10 @@ export function healthRoutes() {
     severity: Severity.optional().parse(c.req.query('severity')), featureId: c.req.query('feature'), rule: c.req.query('rule'),
   })));
   app.post('/impact/diff', async c => {
-    const { base, narrative, lang } = await body(c, z.object({ base: z.string().min(1).optional(), narrative: z.boolean().default(true), lang: Lang.optional() }), true);
+    const { base, narrative, lang } = await body(c, DiffImpactRequest, true);
     const project = c.get('project');
     const impact: DiffImpactDTO = { ...await project.query.diffImpact({ base }), narrative: null };
-    if (narrative && project.diffNarrative) impact.narrative = await project.diffNarrative(impact, lang);
+    if (narrative && impact.changedFiles.length && project.diffNarrative) impact.narrative = await project.diffNarrative(impact, lang);
     return c.json(impact);
   });
   app.post('/estimate', async c => {

@@ -67,6 +67,10 @@ function graphIds(nodes: NodeRef[]) {
 }
 
 function Comparison({ data, pid, base }: { data: DiffImpactDTO; pid: string; base?: string }) {
+  if (data.unavailable === 'not-a-work-tree')
+    return <EmptyState title={t('impact.noGit')} body={t('impact.noGitBody')} />;
+  if (data.unavailable === 'git-not-installed')
+    return <EmptyState title={t('impact.gitMissing')} body={t('impact.gitMissingBody')} />;
   if (!data.changedFiles.length)
     return <EmptyState title={t('impact.empty')} body={t('impact.emptyBody')} />;
   const refs = new Map(
@@ -225,7 +229,7 @@ export function Impact() {
         <h1 className="text-2xl font-semibold tracking-tight">{t('nav.impact')}</h1>
         <p className="mt-2 text-sm text-[var(--text-muted)]">{t('impact.intro')}</p>
       </header>
-      <BaseSelector
+      {!response.data?.unavailable && <BaseSelector
         key={base ?? ''}
         base={base}
         compare={(ref) => {
@@ -234,7 +238,7 @@ export function Impact() {
           else next.delete('base');
           setParams(next);
         }}
-      />
+      />}
       {response.error ? (
         <ErrorCard error={response.error} onRetry={() => void response.refetch()} />
       ) : response.data && pid ? (

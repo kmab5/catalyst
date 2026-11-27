@@ -100,3 +100,24 @@ test('estimate and diff use the project and respect the narrative toggle', async
   expect(DiffImpactDTO.parse(await (await post('impact/diff')).json()).narrative).toContain('billing');
   expect(DiffImpactDTO.parse(await (await post('impact/diff', '{"narrative":false}')).json()).narrative).toBeNull();
 });
+
+test('Impact returns a useful empty comparison for an indexed folder without Git', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'catalyst-impact-'));
+  const { createEngine } = await import('@catalyst/core');
+  const engine = createEngine({ homeDir: join(dir, 'home'), env: {} });
+  try {
+    const project = await engine.projects.open(dir);
+    await project.index({ ai: false }).done;
+    const app = createApp(engine, { token });
+    const res = await app.request('/api/projects/' + project.info().id + '/impact/diff', {
+      method: 'POST', headers, body: '{"narrative":false,"lang":"en"}',
+    });
+    expect(res.status).toBe(200);
+    expect(DiffImpactDTO.parse(await res.json())).toMatchObject({
+      unavailable: 'not-a-work-tree', changedFiles: [], narrative: null,
+    });
+  } finally {
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
