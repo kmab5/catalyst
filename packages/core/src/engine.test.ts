@@ -29,6 +29,46 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe('index lifecycle and queries', () => {
+  it('keeps environment credentials out of metadata edits and follows rotations', async () => {
+    const env = { OPENROUTER_API_KEY: 'synthetic-original-1234' };
+    const home = join(dir, 'env-home'),
+      context = createEngine({ homeDir: home, env });
+    try {
+      context.settings.update({
+        provider: { type: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1' },
+      });
+      expect(await readFile(join(home, '.catalyst', 'config.json'), 'utf8')).not.toContain(
+        env.OPENROUTER_API_KEY,
+      );
+      env.OPENROUTER_API_KEY = 'synthetic-rotated-9876';
+      expect(context.settings.get().provider).toMatchObject({
+        apiKeySource: 'env',
+        apiKeyMasked: 'synthe…9876',
+      });
+    } finally {
+      await context.close();
+    }
+  });
+  it('publishes the first structural index when the user skips AI', async () => {
+    engine.settings.update({
+      provider: { type: 'openai-compatible', baseUrl: 'http://127.0.0.1:1/v1', name: 'test' },
+    });
+    const run = project.index();
+    for await (const { event } of run.events()) {
+      if (event.stage === 'summarize') {
+        run.cancel();
+        break;
+      }
+    }
+    expect((await run.done).status).toBe('cancelled');
+    expect(project.info()).toMatchObject({
+      status: 'ready',
+      aiStatus: 'skipped',
+      lastRunId: run.id,
+    });
+    expect(project.query.getOverview('en').entryPoints.length).toBeGreaterThan(0);
+    expect(project.query.search('stripe').length).toBeGreaterThan(0);
+  });
   it('lets a second engine follow an index and replay its completed events', async () => {
     const other = createEngine({ homeDir: join(dir, 'other-home'), env: {} });
     try {

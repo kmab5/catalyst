@@ -101,7 +101,19 @@ export class SettingsStore {
   resolved() {
     const saved = readJson<Saved>(this.file, {});
     const configured = Object.hasOwn(saved, 'provider');
-    const provider = configured ? (saved.provider ?? null) : fromEnv(this.env);
+    let provider = configured ? (saved.provider ?? null) : fromEnv(this.env);
+    let keyFromEnvironment = !configured;
+    if (configured && provider && 'apiKey' in provider && provider.apiKey === '') {
+      const name = {
+        anthropic: 'ANTHROPIC_API_KEY',
+        openrouter: 'OPENROUTER_API_KEY',
+        'openai-compatible': 'OPENAI_API_KEY',
+      }[provider.type];
+      if (this.env[name]) {
+        provider = { ...provider, apiKey: this.env[name]! };
+        keyFromEnvironment = true;
+      }
+    }
     const models = { ...defaults(provider), ...saved.models };
     models.fast = this.env.CATALYST_MODEL_FAST ?? models.fast;
     models.smart = this.env.CATALYST_MODEL_SMART ?? models.smart;
@@ -112,10 +124,10 @@ export class SettingsStore {
       models,
       outputLanguage: this.env.CATALYST_LANG ?? saved.outputLanguage,
     });
-    return { config, provider: config.provider, configured };
+    return { config, provider: config.provider, configured, keyFromEnvironment };
   }
   get(): SettingsDTO {
-    const { config, provider: p, configured } = this.resolved();
+    const { config, provider: p, configured, keyFromEnvironment } = this.resolved();
     const key = p && 'apiKey' in p ? p.apiKey : null;
     return {
       ...config,
@@ -125,7 +137,7 @@ export class SettingsStore {
             baseUrl: 'baseUrl' in p ? p.baseUrl : null,
             binary: 'binary' in p ? p.binary : null,
             apiKeyMasked: key ? maskKey(key) : null,
-            apiKeySource: key ? (configured ? 'config' : 'env') : 'none',
+            apiKeySource: key ? (keyFromEnvironment ? 'env' : 'config') : 'none',
             autoDetected: !configured,
           }
         : null,
@@ -149,9 +161,11 @@ export class SettingsStore {
               })
             : null;
       } else {
+        const previous = old.provider?.type === next?.type ? old.provider : null;
         saved.provider = next
           ? ProviderConfig.parse({
-              ...(old.provider?.type === next.type ? old.provider : {}),
+              ...previous,
+              ...(previous && 'apiKey' in previous && old.keyFromEnvironment ? { apiKey: '' } : {}),
               ...next,
             })
           : null;

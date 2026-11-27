@@ -216,6 +216,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
         const req = IndexRequest.parse(request),
           config = cfg(),
           lang = req.language ?? config.outputLanguage ?? settings.get().outputLanguage;
+        let publishedStructure = false;
         const run = startIndexRun(
           store,
           async (signal, report, stats) => {
@@ -236,37 +237,46 @@ export function createEngine(opts: EngineOptions = {}): Engine {
             signal.throwIfAborted();
             store.saveAnalysis(result);
             if (req.ai && provider()) {
-              const ai = await runAiStages({
-                db: store.db,
-                root,
-                client: client(signal, req.budgetUsd, req.concurrency),
-                lang,
-                signal,
-                tier3,
-                onProgress: (stage, n, total, degraded) =>
-                  report(stage, n, total, undefined, degraded),
-              });
-              stats.llmCalls = ai.usage.calls;
-              stats.cacheHits = ai.usage.cacheHits;
-              stats.tokens = { in: ai.usage.tokensIn, out: ai.usage.tokensOut };
-              stats.costUsdEstimate = ai.usage.costUsd;
-              Object.assign(stats, { errors: ai.errors, repairs: ai.repairs });
-              store.meta.set('ai_status', ai.aiStatus);
+              const llm = client(signal, req.budgetUsd, req.concurrency);
+              try {
+                const ai = await runAiStages({
+                  db: store.db,
+                  root,
+                  client: llm,
+                  lang,
+                  signal,
+                  tier3,
+                  onProgress: (stage, n, total, degraded) =>
+                    report(stage, n, total, undefined, degraded),
+                });
+                Object.assign(stats, { errors: ai.errors, repairs: ai.repairs });
+                store.meta.set('ai_status', ai.aiStatus);
+              } catch (error) {
+                if (!signal.aborted) throw error;
+                writeDeterministicFeatures(store.db, lang);
+                store.meta.set('ai_status', 'skipped');
+              } finally {
+                const usage = llm.usage();
+                stats.llmCalls = usage.calls;
+                stats.cacheHits = usage.cacheHits;
+                stats.tokens = { in: usage.tokensIn, out: usage.tokensOut };
+                stats.costUsdEstimate = usage.costUsd;
+              }
             } else {
               writeDeterministicFeatures(store.db, lang);
               store.meta.set('ai_status', 'skipped');
             }
-            signal.throwIfAborted();
             writeFeatureCouplings(store.db, config.health);
             report('fts', 0, result.nodes.length);
             rebuildSearch(store, result, lang);
             report('fts', result.nodes.length, result.nodes.length);
             store.meta.set('output_language', lang);
+            publishedStructure = true;
           },
           (finished) => {
             active = null;
             store.meta.set('last_status', finished.status);
-            if (finished.status === 'done') {
+            if (publishedStructure) {
               const at = finished.finishedAt!;
               store.meta.set('last_index_at', String(at));
               store.meta.set('last_run_id', finished.id);
