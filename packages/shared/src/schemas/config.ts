@@ -1,13 +1,16 @@
 import { z } from 'zod';
 
-export const ProviderType = z.enum(['openrouter', 'anthropic', 'openai-compatible', 'claude-code']);
+export const ProviderType = z.enum(['openrouter', 'anthropic', 'openai-compatible', 'claude-code', 'groq']);
 export type ProviderType = z.infer<typeof ProviderType>;
+
+export const GROQ_MODELS = { fast: 'openai/gpt-oss-20b', smart: 'openai/gpt-oss-120b' } as const;
 
 export const ProviderConfig = z.discriminatedUnion('type', [
   z.object({ type: z.literal('openrouter'), apiKey: z.string(), baseUrl: z.string().default('https://openrouter.ai/api/v1') }),
   z.object({ type: z.literal('anthropic'), apiKey: z.string() }),
   z.object({ type: z.literal('openai-compatible'), apiKey: z.string().optional(), baseUrl: z.string(), name: z.string().default('custom') }),
   z.object({ type: z.literal('claude-code'), binary: z.string().default('claude') }),
+  z.object({ type: z.literal('groq'), apiKey: z.string() }),
 ]);
 export type ProviderConfig = z.infer<typeof ProviderConfig>;
 

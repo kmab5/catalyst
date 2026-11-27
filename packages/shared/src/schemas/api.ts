@@ -133,6 +133,7 @@ export const SettingsUpdate = z.object({
     ProviderConfig.options[1].extend({ apiKey: z.string().nullable().optional() }),
     ProviderConfig.options[2].partial({ baseUrl: true, name: true }).extend({ apiKey: z.string().nullable().optional() }),
     ProviderConfig.options[3].partial({ binary: true }),
+    ProviderConfig.options[4].extend({ apiKey: z.string().nullable().optional() }),
   ]).nullable().optional(),
   models: z.object({ fast: z.string(), smart: z.string() }).partial().optional(),
   outputLanguage: z.enum(['en', 'tr']).optional(),
@@ -214,7 +215,7 @@ export type FsBrowseDTO = z.infer<typeof FsBrowseDTO>;
 
 export const ProvidersDetectDTO = z.object({
   claudeCli: z.object({ found: z.boolean(), version: z.string().optional() }), ollama: z.object({ found: z.boolean(), models: z.array(z.string()) }),
-  env: z.object({ OPENROUTER_API_KEY: z.boolean(), ANTHROPIC_API_KEY: z.boolean(), OPENAI_API_KEY: z.boolean() }),
+  env: z.object({ GROQ_API_KEY: z.boolean().optional(), OPENROUTER_API_KEY: z.boolean(), ANTHROPIC_API_KEY: z.boolean(), OPENAI_API_KEY: z.boolean() }),
 });
 export type ProvidersDetectDTO = z.infer<typeof ProvidersDetectDTO>;
 
