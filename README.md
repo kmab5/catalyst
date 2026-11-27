@@ -37,3 +37,16 @@ The index lives in the project's `.catalyst/` directory. The local server binds 
 ## Take a tour
 
 The four-minute walkthrough follows a Stripe webhook and a session helper in Taxonomy, then switches to a Python backend. [Demo script](demo/script.md) · [Product and architecture](plan/docs/README.md)
+
+The screenshots below use a real Taxonomy checkout with a partially completed AI index. The parser and dependency graph supply the routes, groups, connections and health findings shown here.
+
+![Taxonomy Explorer displaying the source of getCurrentUser and its resolved callers](demo/screenshots/xray.png)
+
+**Explorer.** The X-Ray for `getCurrentUser` links to five calling components and pages. Its plain-English summary was still pending at capture time.
+
+| Screen | What the partial index shows |
+| --- | --- |
+| [Overview](demo/screenshots/overview.png) | Detected frameworks, HTTP entry points and health counts. |
+| [Feature detail](demo/screenshots/feature.png) | A dependency-based group that contains the Stripe webhook, with structural changeability evidence. |
+| [Graph](demo/screenshots/graph.png) | A two-hop view centered on `lib/session.ts`, with 35 nodes and 100 connections. |
+| [Health](demo/screenshots/health.png) | Grouped findings for inspecting route checks and function complexity. |
