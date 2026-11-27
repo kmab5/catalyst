@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { getFixture, installMockFetch } from '@/test/mockFetch';
@@ -42,4 +42,47 @@ test('a structure-only project can ask questions after a provider is connected',
   renderWorkflow('/ask');
   await userEvent.click(await screen.findByRole('button', { name: 'Do we have password reset?' }));
   expect(await screen.findByRole('heading', { name: /Not found/i })).toBeVisible();
+});
+
+test('an Ask request finishes away from the page and its deep link does not replay', async () => {
+  const requests: { question: string; history: { role: string; content: string }[] }[] = [];
+  let finish!: () => void;
+  let signal!: AbortSignal;
+  installMockFetch(undefined, {
+    ['POST /api/projects/' + projectPath.slice(3) + '/ask']: async (req) => {
+      requests.push(await req.json());
+      signal = req.signal;
+      return new Response(new ReadableStream({
+        start(controller) {
+          finish = () => {
+            const answer = { markdown: 'Stored answer.', citations: [], searched: [], found: true };
+            controller.enqueue(new TextEncoder().encode(
+              'event: done\ndata: ' + JSON.stringify({ type: 'done', answer }) + '\n\n',
+            ));
+            controller.close();
+          };
+        },
+      }), { headers: { 'Content-Type': 'text/event-stream' } });
+    },
+  });
+  const { router } = renderWorkflow('/ask?q=Original');
+  await waitFor(() => expect(requests).toHaveLength(1));
+  await act(() => router.navigate(projectPath + '/features'));
+  expect(signal.aborted).toBe(false);
+  await act(async () => finish());
+  await act(() => router.navigate(-1));
+  expect(await screen.findByText('Stored answer.')).toBeVisible();
+  expect(requests).toHaveLength(1);
+  const field = screen.getByRole('textbox');
+  await userEvent.type(field, 'Follow-up{Enter}');
+  await waitFor(() => expect(requests).toHaveLength(2));
+  expect(requests[1]?.history).toEqual([
+    { role: 'user', content: 'Original' },
+    { role: 'assistant', content: 'Stored answer.' },
+  ]);
+  await act(() => router.navigate(projectPath + '/features'));
+  await act(() => router.navigate(-1));
+  expect(await screen.findByRole('heading', { name: 'Follow-up' })).toBeVisible();
+  expect(requests).toHaveLength(2);
+  await act(async () => finish());
 });

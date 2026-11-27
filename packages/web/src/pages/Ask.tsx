@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useLocation, useOutletContext, useParams, useSearchParams } from 'react-router';
-import { Lang, type AskAnswer, type AskEvent, type AskRequest } from '@/api/contract';
+import { Lang } from '@/api/contract';
 import { useProject, useSettings } from '@/api/hooks/queries';
 import { useAsk } from '@/api/hooks/useAsk';
 import { Markdown } from '@/components/Markdown';
@@ -16,12 +16,6 @@ import { SuggestedQuestions } from './ask/SuggestedQuestions';
 const XRayPanel = lazy(() =>
   import('./explorer/XRayPanel').then((m) => ({ default: m.XRayPanel })),
 );
-interface Turn {
-  question: string;
-  answer: AskAnswer;
-  trace: AskEvent[];
-}
-
 function SourceSheet({ id, close }: { id: string; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -63,43 +57,19 @@ function Conversation({ pid }: { pid: string }) {
   const settings = useSettings().data;
   const session = useAsk(pid);
   const [draft, setDraft] = useState('');
-  const [question, setQuestion] = useState('');
-  const [past, setPast] = useState<Turn[]>([]);
+  const { question, past, ask } = session;
   const [source, setSource] = useState<string>();
   const noAi = settings?.provider === null || session.error?.code === 'AI_NOT_CONFIGURED';
-  const start = (text: string, retry = false) => {
-    const q = text.trim();
-    if (!q) return;
-    const previous =
-      !retry && session.answer && question
-        ? [...past, { question, answer: session.answer, trace: session.trace }]
-        : past;
-    setPast(previous);
-    setQuestion(q);
+  const lang = Lang.safeParse(search.get('lang')).data ?? project?.outputLanguage;
+  const start = (text: string) => {
     setDraft('');
     setSource(undefined);
-    const history: AskRequest['history'] = previous
-      .flatMap((turn) => [
-        { role: 'user' as const, content: turn.question },
-        { role: 'assistant' as const, content: turn.answer.markdown },
-      ])
-      .slice(-6);
-    void session.ask(
-      q,
-      history,
-      Lang.safeParse(search.get('lang')).data ?? project?.outputLanguage,
-    );
+    void ask(text, lang);
   };
-  const latestStart = useRef(start);
-  useEffect(() => {
-    latestStart.current = start;
-  });
   const q = search.get('q')?.trim() ?? '';
   useEffect(() => {
-    if (!q) return;
-    const timer = window.setTimeout(() => latestStart.current(q), 0);
-    return () => window.clearTimeout(timer);
-  }, [q, location.key]);
+    if (q) void ask(q, lang, location.key);
+  }, [ask, q, lang, location.key]);
   return (
     <article data-testid="page-ask" className="mx-auto max-w-3xl space-y-6 px-6 py-8">
       <header>
@@ -127,7 +97,7 @@ function Conversation({ pid }: { pid: string }) {
             )
           )}
           {session.error && !noAi && (
-            <ErrorCard error={session.error} onRetry={() => start(question, true)} />
+            <ErrorCard error={session.error} onRetry={() => start(question)} />
           )}
         </section>
       )}
