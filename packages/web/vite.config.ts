@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => ({
           },
   },
   test: {
+    include: ['src/**/*.test.{ts,tsx}', 'mock/**/*.test.ts'],
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],

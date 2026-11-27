@@ -42,6 +42,10 @@ export function onIndexHeader(cb: IndexHeaderListener): () => void {
 }
 
 const serverGoneListeners = new Set<() => void>();
+export function reportServerGone() {
+  for (const cb of serverGoneListeners) cb();
+}
+
 export function onServerGone(cb: () => void): () => void {
   serverGoneListeners.add(cb);
   return () => serverGoneListeners.delete(cb);
@@ -83,7 +87,7 @@ async function request<T>(
   try {
     res = await fetch(path, { ...init, headers });
   } catch (err) {
-    for (const cb of serverGoneListeners) cb();
+    reportServerGone();
     throw new ApiError(
       'SERVER_GONE',
       0,

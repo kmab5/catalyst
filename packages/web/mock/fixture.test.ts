@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { loadFixture } from './load-fixture';
-import type { TreeNode } from '../src/api/contract';
+import type { TreeNodeDTO } from '../src/api/contract';
 
-function collectTreeIds(node: TreeNode): string[] {
+function collectTreeIds(node: TreeNodeDTO): string[] {
   const out = [node.id];
   if (node.children) {
     for (const c of node.children) out.push(...collectTreeIds(c));
@@ -26,7 +26,7 @@ function collectRefs(obj: unknown, known: string[] = []): string[] {
   }
   for (const v of Object.values(rec)) {
     if (typeof v === 'string') {
-      const matches = v.matchAll(/\[\[((?:dir|file|sym|route|db|env|pkg|svc|feature):[^\]]+)\]\]/g);
+      const matches = v.matchAll(/\[\[((?:dir|file|sym|route|db|env|pkg|svc|feature):(?:[^\[\]\n]|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\])+)\]\]/g);
       for (const m of matches) {
         if (m[1]) known.push(m[1]);
       }

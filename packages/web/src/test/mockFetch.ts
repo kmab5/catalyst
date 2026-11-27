@@ -3,7 +3,7 @@ import { handleMock } from '../../mock/handlers';
 import taxonomyJson from '../../../../fixtures/index/taxonomy.json';
 
 export function getFixture(): FixtureIndex {
-  return taxonomyJson as unknown as FixtureIndex;
+  return structuredClone(taxonomyJson) as unknown as FixtureIndex;
 }
 
 export function installMockFetch(
@@ -47,6 +47,7 @@ export function installMockFetch(
               ),
             );
           }
+          res.onComplete?.();
           controller.close();
         },
       });

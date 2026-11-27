@@ -1,9 +1,11 @@
+import { runsFor, startDemoRun, finishRun, frameDelayMs } from './runs';
+import { ids, SettingsUpdate } from '../src/api/contract';
+import { demoDiff, graphAt, settingsAfter, treeAt } from './views';
 import type { FixtureIndex } from './fixture-schema';
 import type {
   AskRequest,
   GraphQuery,
   NodeKind,
-  SettingsUpdate,
   Severity,
 } from '../src/api/contract';
 
@@ -11,6 +13,7 @@ export interface MockResult {
   status: number;
   headers?: Record<string, string>;
   json?: unknown;
+  onComplete?: () => void;
   sse?: { event: string; data: unknown; delayMs: number }[];
 }
 
@@ -43,7 +46,10 @@ export function handleMock(
   const pathname = parsedUrl.pathname;
   const sp = parsedUrl.searchParams;
 
-  const projectHeaders = { 'X-Catalyst-Index': f.run.id };
+  const runs = runsFor(f);
+  const pid = pathname.split('/')[3];
+  const project = f.projects.find(p => p.id === pid);
+  const projectHeaders = { 'X-Catalyst-Index': project?.lastRunId ?? '' };
 
   if (method === 'GET' && pathname === '/api/health') {
     return { status: 200, json: { ok: true, version: '0.1.0-mock', mock: true } };
@@ -54,15 +60,10 @@ export function handleMock(
   }
 
   if (method === 'PUT' && pathname === '/api/settings') {
-    const u = (req.body ?? {}) as SettingsUpdate;
-    const next = {
-      ...f.settings,
-      models: { ...f.settings.models, ...(u.models ?? {}) },
-      outputLanguage: u.outputLanguage ?? f.settings.outputLanguage,
-      budgetUsd: u.budgetUsd !== undefined ? u.budgetUsd : f.settings.budgetUsd,
-      concurrency: u.concurrency ?? f.settings.concurrency,
-    };
-    return { status: 200, json: next };
+    const update = SettingsUpdate.safeParse(req.body);
+    if (!update.success) return { status: 400, json: { error: { code: 'BAD_REQUEST', message: 'Invalid settings' } } };
+    f.settings = settingsAfter(f.settings, update.data);
+    return { status: 200, json: f.settings };
   }
 
   if (method === 'POST' && pathname === '/api/settings/test-provider') {
@@ -82,7 +83,11 @@ export function handleMock(
   }
 
   if (method === 'GET' && pathname === '/api/fs/browse') {
-    return { status: 200, json: f.fsBrowse };
+    const path = sp.get('path');
+    if (!path || path === f.fsBrowse.path) return { status: 200, json: f.fsBrowse };
+    const entry = f.fsBrowse.entries.find(e => e.path === path);
+    if (entry) return { status: 200, json: { path, parent: f.fsBrowse.path, entries: [] } };
+    return { status: 404, json: { error: { code: 'PATH_NOT_FOUND', message: 'Unknown demo directory' } } };
   }
 
   if (method === 'GET' && pathname === '/api/projects') {
@@ -91,7 +96,8 @@ export function handleMock(
 
   if (method === 'POST' && pathname === '/api/projects') {
     const body = (req.body ?? {}) as { path?: string };
-    const existing = f.projects.find((p) => p.root === body.path) ?? f.projects[0];
+    const existing = f.projects.find((p) => p.root === body.path);
+    if (!existing) return { status: 404, json: { error: { code: 'PATH_NOT_FOUND', message: 'Unknown demo project' } } };
     return { status: 200, json: existing };
   }
 
@@ -110,28 +116,28 @@ export function handleMock(
 
   m = matchPath('/api/projects/:pid/index', pathname);
   if (m && method === 'POST') {
-    return { status: 202, headers: projectHeaders, json: { runId: f.run.id } };
+    if (!project) return { status: 404, json: { error: { code: 'PROJECT_NOT_FOUND', message: 'Unknown project' } } };
+    if (project.activeRunId) return { status: 409, json: { error: { code: 'INDEX_RUNNING', message: 'Index already running' } } };
+    const ai = Boolean(f.settings.provider) && (req.body as {ai?: boolean} | undefined)?.ai !== false;
+    return { status: 202, headers: projectHeaders, json: { runId: startDemoRun(f, project, ai).id } };
   }
 
-  m = matchPath('/api/projects/:pid/runs/:rid', pathname);
-  if (m && method === 'GET') {
-    return { status: 200, headers: projectHeaders, json: f.run };
-  }
-
-  m = matchPath('/api/projects/:pid/runs/:rid/cancel', pathname);
-  if (m && method === 'POST') {
-    return { status: 200, headers: projectHeaders, json: { ok: true } };
-  }
-
-  m = matchPath('/api/projects/:pid/runs/:rid/events', pathname);
-  if (m && method === 'GET') {
-    return {
-      status: 200,
-      headers: projectHeaders,
-      sse: f.runEvents.map((ev) => ({
-        event: ev.stage === 'done' || ev.stage === 'error' ? ev.stage : 'progress',
-        data: ev,
-        delayMs: 120,
+  for (const suffix of ['', '/cancel', '/events']) {
+    m = matchPath('/api/projects/:pid/runs/:rid' + suffix, pathname);
+    if (!m) continue;
+    const run = runs.get(m.rid ?? '');
+    if (!run || run.project.id !== pid) return { status: 404, json: { error: { code: 'PATH_NOT_FOUND', message: 'Unknown run' } } };
+    if (suffix === '' && method === 'GET') return { status: 200, headers: projectHeaders, json: run.record };
+    if (suffix === '/cancel' && method === 'POST') {
+      finishRun(run, true);
+      return { status: 200, headers: projectHeaders, json: {ok: true} };
+    }
+    if (suffix === '/events' && method === 'GET') return {
+      status: 200, headers: projectHeaders,
+      onComplete: () => finishRun(run),
+      sse: run.events.map(ev => ({
+        event: ev.stage === 'cancelled' ? 'done' : ['done','error'].includes(ev.stage) ? ev.stage : 'progress',
+        data: ev, delayMs: frameDelayMs,
       })),
     };
   }
@@ -147,21 +153,23 @@ export function handleMock(
         cachedSummaries: 117,
         llmCalls: 16,
         tokens: { in: 42000, out: 6500 },
-        costUsd: 0.08,
+        costUsd: f.settings.provider?.type === 'claude-code' ? null : 0.08,
         model: f.settings.models,
-        note: null,
+        note: f.settings.provider?.type === 'claude-code' ? 'Billed to your Claude plan' : null,
       },
     };
   }
 
   m = matchPath('/api/projects/:pid/overview', pathname);
   if (m && method === 'GET') {
-    return { status: 200, headers: projectHeaders, json: f.overview };
+    return { status: 200, headers: projectHeaders, json: { ...f.overview, project: project ?? f.overview.project,
+      ...(project?.aiStatus === 'skipped' ? {overview: null, features: []} : {}),
+    } };
   }
 
   m = matchPath('/api/projects/:pid/features', pathname);
   if (m && method === 'GET') {
-    return { status: 200, headers: projectHeaders, json: f.features };
+    return { status: 200, headers: projectHeaders, json: project?.aiStatus === 'skipped' ? [] : f.features };
   }
 
   m = matchPath('/api/projects/:pid/features/:fid', pathname);
@@ -180,13 +188,15 @@ export function handleMock(
 
   m = matchPath('/api/projects/:pid/tree', pathname);
   if (m && method === 'GET') {
-    return { status: 200, headers: projectHeaders, json: f.tree };
+    const tree = treeAt(f.tree, sp.get('path') ?? '', Number(sp.get('depth') ?? Infinity));
+    if (!tree) return { status: 404, json: { error: { code: 'NODE_NOT_FOUND', message: 'Unknown directory' } } };
+    return { status: 200, headers: projectHeaders, json: tree };
   }
 
   m = matchPath('/api/projects/:pid/nodes/:id', pathname);
   if (m && method === 'GET') {
     const id = m.id ?? '';
-    const xray = f.nodes[id] ?? Object.values(f.nodes)[0];
+    const xray = f.nodes[id];
     if (!xray) {
       return {
         status: 404,
@@ -200,10 +210,8 @@ export function handleMock(
   m = matchPath('/api/projects/:pid/nodes/:id/source', pathname);
   if (m && method === 'GET') {
     const id = m.id ?? '';
-    const src =
-      f.sources[id] ??
-      f.sources[`file:${f.nodes[id]?.node.filePath ?? ''}`] ??
-      Object.values(f.sources)[0];
+    const path = f.nodes[id]?.node.filePath;
+    const src = f.sources[id] ?? (path ? f.sources[ids.file(path)] : undefined);
     if (!src) {
       return {
         status: 404,
@@ -211,13 +219,18 @@ export function handleMock(
         json: { error: { code: 'NODE_NOT_FOUND', message: `Source not found for ${id}` } },
       };
     }
-    return { status: 200, headers: projectHeaders, json: src };
+    const startLine = Math.max(src.startLine, Number(sp.get('start') ?? src.startLine));
+    const endLine = Math.min(src.endLine, Number(sp.get('end') ?? src.endLine));
+    const text = src.text.split('\n').slice(startLine - src.startLine, endLine - src.startLine + 1).join('\n');
+    return { status: 200, headers: projectHeaders, json: { ...src, nodeId: id, startLine, endLine, text } };
   }
 
   m = matchPath('/api/projects/:pid/nodes/:id/impact', pathname);
   if (m && method === 'GET') {
     const id = m.id ?? '';
-    const imp = f.impact[id] ?? Object.values(f.impact)[0];
+    const imp = f.impact[id] ?? (f.nodes[id] && {
+      root: id, nodes: [], edges: [], byFeature: [], routes: [], truncated: false,
+    });
     if (!imp) {
       return {
         status: 404,
@@ -225,43 +238,25 @@ export function handleMock(
         json: { error: { code: 'NODE_NOT_FOUND', message: `Impact not found for ${id}` } },
       };
     }
-    return { status: 200, headers: projectHeaders, json: imp };
+    const direction = sp.get('direction') ?? 'both';
+    const depth = Number(sp.get('depth') ?? 3);
+    const nodes = imp.nodes.filter(n => n.distance <= depth && (direction === 'both' || n.direction === direction));
+    const included = new Set(nodes.map(n => n.id));
+    const counts = new Map<string, number>();
+    for (const node of nodes) for (const feature of f.nodes[node.id]?.features ?? []) {
+      counts.set(feature.id, (counts.get(feature.id) ?? 0) + 1);
+    }
+    return { status: 200, headers: projectHeaders, json: { ...imp, direction, depth, nodes,
+      edges: imp.edges.filter(e => included.has(e.node.id)), routes: imp.routes.filter(id => included.has(id)),
+      byFeature: [...counts].map(([featureId, count]) => ({featureId, count})),
+    } };
   }
 
   m = matchPath('/api/projects/:pid/graph', pathname);
   if (m && method === 'GET') {
     const level = (sp.get('level') ?? 'file') as GraphQuery['level'];
     const base = level === 'feature' ? f.graph.feature : f.graph.file;
-    const featureFilter = sp.get('feature');
-    const edgeKinds = sp.get('edgeKinds')?.split(',').filter(Boolean);
-    const nodeKinds = sp.get('nodeKinds')?.split(',').filter(Boolean);
-    const provenance = sp.get('provenance')?.split(',').filter(Boolean);
-
-    let nodes = base.nodes;
-    if (featureFilter) {
-      nodes = nodes.filter(
-        (n) => n.featureId === featureFilter || n.id === featureFilter,
-      );
-    }
-    if (nodeKinds?.length) {
-      nodes = nodes.filter((n) => nodeKinds.includes(n.kind));
-    }
-    const idSet = new Set(nodes.map((n) => n.id));
-    let edges = base.edges.filter(
-      (e) => idSet.has(e.source) && idSet.has(e.target),
-    );
-    if (edgeKinds?.length) {
-      edges = edges.filter((e) => edgeKinds.includes(e.kind));
-    }
-    if (provenance?.length) {
-      edges = edges.filter((e) => provenance.includes(e.provenance));
-    }
-
-    return {
-      status: 200,
-      headers: projectHeaders,
-      json: { ...base, nodes, edges },
-    };
+    return { status: 200, headers: projectHeaders, json: graphAt(base, sp) };
   }
 
   m = matchPath('/api/projects/:pid/find', pathname);
@@ -278,7 +273,7 @@ export function handleMock(
             r.node.name.toLowerCase().includes(q) ||
             (r.node.filePath?.toLowerCase().includes(q) ?? false),
         );
-      if (matched.length > 0) {
+      {
         const seen = new Set<string>();
         results = matched.filter((r) =>
           seen.has(r.node.id) ? false : (seen.add(r.node.id), true),
@@ -288,7 +283,7 @@ export function handleMock(
     if (kinds?.length) {
       results = results.filter((r) => kinds.includes(r.node.kind));
     }
-    return { status: 200, headers: projectHeaders, json: results };
+    return { status: 200, headers: projectHeaders, json: results.slice(0, Number(sp.get('limit') ?? results.length)) };
   }
 
   m = matchPath('/api/projects/:pid/search', pathname);
@@ -306,7 +301,7 @@ export function handleMock(
             r.snippet.toLowerCase().includes(q) ||
             (r.purpose?.toLowerCase().includes(q) ?? false),
         );
-      if (matched.length > 0) {
+      {
         const seen = new Set<string>();
         results = matched.filter((r) =>
           seen.has(r.node.id) ? false : (seen.add(r.node.id), true),
@@ -316,11 +311,12 @@ export function handleMock(
     if (kind) {
       results = results.filter((r) => r.node.kind === kind);
     }
-    return { status: 200, headers: projectHeaders, json: results };
+    return { status: 200, headers: projectHeaders, json: results.slice(0, Number(sp.get('limit') ?? results.length)) };
   }
 
   m = matchPath('/api/projects/:pid/ask', pathname);
   if (m && method === 'POST') {
+    if (!f.settings.provider) return { status: 412, json: { error: { code: 'AI_NOT_CONFIGURED', message: 'Connect an AI provider in Settings.' } } };
     const body = (req.body ?? {}) as Partial<AskRequest>;
     const q = (body.question ?? '').trim();
     const script =
@@ -341,17 +337,27 @@ export function handleMock(
     };
   }
 
+  m = matchPath('/api/projects/:pid/impact/diff', pathname);
+  if (m && method === 'POST') return { status: 200, json: demoDiff(f, (req.body as {base?: string} | undefined)?.base) };
+
   m = matchPath('/api/projects/:pid/health', pathname);
   if (m && method === 'GET') {
     const severity = sp.get('severity') as Severity | null;
     const rule = sp.get('rule');
     let flags = f.health.flags;
     if (severity) flags = flags.filter((fl) => fl.severity === severity);
+    const feature = sp.get('feature');
+    if (feature) flags = flags.filter(flag => f.nodes[flag.node.id]?.features.some(item => item.id === feature));
     if (rule) flags = flags.filter((fl) => fl.rule === rule);
+    const summary: typeof f.health.summary = {high: 0, warn: 0, info: 0, byRule: {}};
+    for (const flag of flags) {
+      summary[flag.severity]++;
+      summary.byRule[flag.rule] = (summary.byRule[flag.rule] ?? 0) + 1;
+    }
     return {
       status: 200,
       headers: projectHeaders,
-      json: { ...f.health, flags },
+      json: { ...f.health, flags, summary, cycles: flags.some(f => f.rule === 'cycle') ? f.health.cycles : [] },
     };
   }
 

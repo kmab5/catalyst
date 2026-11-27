@@ -69,7 +69,7 @@ export function useBrowse(path?: string) {
   });
 }
 
-export function useOverview(pid: string | undefined, lang: Lang = 'en') {
+export function useOverview(pid: string | undefined, lang?: Lang) {
   return useQuery({
     queryKey: ['overview', pid, lang],
     queryFn: () => api.overview(pid!, lang),
@@ -77,7 +77,7 @@ export function useOverview(pid: string | undefined, lang: Lang = 'en') {
   });
 }
 
-export function useFeatures(pid: string | undefined, lang: Lang = 'en') {
+export function useFeatures(pid: string | undefined, lang?: Lang) {
   return useQuery({
     queryKey: ['features', pid, lang],
     queryFn: () => api.features.list(pid!, lang),
@@ -88,7 +88,7 @@ export function useFeatures(pid: string | undefined, lang: Lang = 'en') {
 export function useFeature(
   pid: string | undefined,
   fid: string | undefined,
-  lang: Lang = 'en',
+  lang?: Lang,
 ) {
   return useQuery({
     queryKey: ['feature', pid, fid, lang],
@@ -108,7 +108,7 @@ export function useTree(pid: string | undefined, path?: string, depth?: number) 
 export function useNode(
   pid: string | undefined,
   nodeId: string | undefined,
-  lang: Lang = 'en',
+  lang?: Lang,
 ) {
   return useQuery({
     queryKey: ['node', pid, nodeId, lang],
@@ -206,7 +206,7 @@ export function useDiffImpact(
   req: { base?: string; narrative?: boolean; lang?: Lang },
 ) {
   return useQuery({
-    queryKey: ['diff-impact', pid, req.base ?? '', req.narrative ?? true, req.lang ?? 'en'],
+    queryKey: ['diff-impact', pid, req.base ?? '', req.narrative ?? true, req.lang ?? null],
     queryFn: () => api.diffImpact(pid!, req),
     enabled: Boolean(pid),
   });

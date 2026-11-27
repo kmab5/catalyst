@@ -1,35 +1,20 @@
 const STORAGE_KEY = 'catalyst.token';
 
 export function getToken(): string | null {
-  if (typeof document !== 'undefined') {
-    const meta = document.querySelector('meta[name="catalyst-token"]');
-    const content = meta?.getAttribute('content');
-    if (content && content.trim().length > 0 && content !== '__CATALYST_TOKEN__') {
-      return content.trim();
-    }
+  if (typeof window === 'undefined') return null;
+  const url = new URL(window.location.href);
+  const param = url.searchParams.get('token');
+  // Keep the launcher credential out of browser history and subsequent links.
+  if (param !== null) {
+    url.searchParams.delete('token');
+    window.history.replaceState(window.history.state, '', url);
   }
-
-  if (typeof window !== 'undefined') {
-    const url = new URL(window.location.href);
-    const param = url.searchParams.get('token');
-    if (param) {
-      try {
-        window.sessionStorage.setItem(STORAGE_KEY, param);
-      } catch {
-        // ignore storage restrictions
-      }
-      url.searchParams.delete('token');
-      window.history.replaceState({}, '', url.toString());
-      return param;
-    }
-
-    try {
-      const stored = window.sessionStorage.getItem(STORAGE_KEY);
-      if (stored) return stored;
-    } catch {
-      // ignore
-    }
+  const meta = document.querySelector('meta[name="catalyst-token"]')?.getAttribute('content')?.trim();
+  const token = meta && meta !== '__CATALYST_TOKEN__' ? meta : param;
+  try {
+    if (token) window.sessionStorage.setItem(STORAGE_KEY, token);
+    return token || window.sessionStorage.getItem(STORAGE_KEY);
+  } catch {
+    return token || null;
   }
-
-  return null;
 }
