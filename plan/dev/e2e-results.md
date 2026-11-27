@@ -8,6 +8,13 @@ Recorded on Windows with Node 22.23.5 and pnpm 9.15.9. Unit and integration test
 - The loopback integration test indexes a temporary repository through the real engine and provider adapter. It validates summaries, flow edges, a feature changeability card and the overview, then consumes found and absent answers through the HTTP Ask stream. A warm run made zero provider requests, a single-file edit regenerated one file summary, and English and Turkish records coexisted.
 - Real HTTP tests cover the project token, node IDs in URLs, streaming and reconnection, static delivery and port fallback. The in-memory MCP client lists ten tools and retrieves a blast radius from the server.
 
+## Combined CLI and browser
+
+- The integrated workspace builds the CLI, the browser app and five WASM grammars. A frozen install in a separate checkout passed typechecking and all 231 tests across 47 suites. The packaging test runs the unpacked CLI using only its declared runtime dependencies.
+- An additional `npm install --omit=dev` of the actual `catalyst-dx-0.1.0.tgz` in an empty directory installed the native SQLite dependency, printed version `0.1.0`, and completed a structural fixture index with zero provider calls.
+- The packaged CLI served real API responses that passed the shared DTO validators. A second listener fell back from port 4472 to 4473. The Chromium smoke test navigated the launcher, Overview, X-Ray, Graph, Health and command palette against the real fixture.
+- Two fresh browser sessions rehearsed the structural demo, opening the Taxonomy webhook, locating the session helper, inspecting graph and health evidence, and switching to the FastAPI project. Five screenshots show the real partial Taxonomy index. The Ask screen was rehearsed in its offline state.
+
 ## Golden repositories
 
 | Repository and revision | Observed result |
@@ -31,5 +38,12 @@ Five Taxonomy X-Rays were compared with source. All 43 displayed direct connecti
 
 The OpenRouter connection test succeeded. An initial run exposed serialized file summaries and was interrupted before completion. A resumed twelve-worker run completed in 65.4 seconds, including 46.6 seconds in summarization. This timing includes cache reuse and does not establish the five-minute cold AI target.
 
-The SQLite index retained 99 summary records. The provider returned HTTP 402, and the account credits endpoint confirmed an exhausted balance. The run reported `aiStatus: partial` and used structural feature groups. The live AI overview, four named features, provider-backed Ask answers, cold AI run on the unseen repository and live warm-cache target remain unverified. Screenshots document the actual partial index. [Demo walkthrough](../../demo/script.md)
+| Resumed run | Recorded measurement |
+|---|---|
+| Scan, parse and remaining structural stages | 180 ms, 1,677 ms and 117 ms |
+| Summaries and directory rollups | 46,577 ms and 3,620 ms |
+| Feature discovery and overview attempts | 142 ms and 217 ms |
+| Changeability attempts and full-text indexing | 12,814 ms and 49 ms |
+| Provider usage | 227,215 input tokens and 70,518 output tokens. The engine recorded 182 attempted calls and an estimated US$0.058 for this run. |
 
+The SQLite index retained 99 summary records. The provider returned HTTP 402, and the account credits endpoint confirmed an exhausted balance. The run reported `aiStatus: partial` and used structural feature groups. The live AI overview, four named features, provider-backed Ask answers, cold AI run on the unseen repository and live warm-cache target remain unverified. Screenshots document the actual partial index. [Demo walkthrough](../../demo/script.md)

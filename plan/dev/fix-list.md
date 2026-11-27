@@ -11,4 +11,3 @@
 | P1 | A second process could show a stale graph or miss run events. | The query cache tracks external database changes, and bounded event history supports replay across connections. A two-engine regression verifies status, replay, and shutdown. |
 
 **External acceptance dependency.** The configured OpenRouter account returned HTTP 402 during the live Taxonomy run. A funded provider is needed to complete live semantic acceptance and capture the two real Ask answers. See the [acceptance record](e2e-results.md).
-
