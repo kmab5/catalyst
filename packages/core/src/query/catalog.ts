@@ -6,8 +6,6 @@ import type {
   NodeRef,
   Feature,
   Lang,
-  FileSummary,
-  ModuleSummary,
 } from '@catalyst/shared';
 import type { Store } from '../store/index.js';
 import { CatalystError } from '../errors.js';
@@ -82,12 +80,4 @@ export function features(s: Store, lang: Lang) {
   return s
     .all<{ json: string }>('SELECT json FROM features WHERE language=? ORDER BY id', lang)
     .map((r) => JSON.parse(r.json) as Feature);
-}
-export function summary(s: Store, id: string, lang: Lang): FileSummary | ModuleSummary | null {
-  const r = s.one<{ json: string }>(
-    'SELECT json FROM summaries WHERE node_id=? AND language=?',
-    id,
-    lang,
-  );
-  return r ? JSON.parse(r.json) : null;
 }

@@ -16,7 +16,7 @@ import type { QueryApi } from './types.js';
 import type { Store } from '../store/index.js';
 import { LocalPathSource } from '../project/local.js';
 import { CatalystError } from '../errors.js';
-import { catalog, need, ref, features, summary, type Catalog } from './catalog.js';
+import { catalog, need, ref, features, type Catalog } from './catalog.js';
 import { adjacent, edgeRef, graphView, impact, paths } from './traverse.js';
 import { diffImpact } from './diff.js';
 
@@ -134,9 +134,13 @@ export function createQueryApi(
     getStack: () => JSON.parse(store.meta.get('stack_json') ?? '[]'),
     getOverview(lang) {
       const h = health(),
-        row = store.one<{ json: string }>('SELECT json FROM overview WHERE language=?', lang);
+        info = project();
+      const row =
+        info.aiStatus === 'skipped' || info.aiStatus === 'none'
+          ? undefined
+          : store.one<{ json: string }>('SELECT json FROM overview WHERE language=?', lang);
       return {
-        project: project(),
+        project: info,
         stack: query.getStack(),
         features: featureList(lang),
         overview: row ? JSON.parse(row.json) : null,
@@ -174,7 +178,8 @@ export function createQueryApi(
     getXRay(id, lang) {
       const node = query.getNode(id),
         file = node.filePath ? ids.file(node.filePath) : id;
-      const s = summary(store, node.kind === 'symbol' ? file : id, lang),
+      const row = store.summaries.get(node.kind === 'symbol' ? file : id, lang);
+      const s = row?.json ?? null,
         fileSummary = s && 'symbols' in s ? s : null;
       const downstream = query.neighbours(id, { direction: 'down' }),
         upstream = query.neighbours(id, { direction: 'up' });
@@ -220,6 +225,7 @@ export function createQueryApi(
       return {
         node,
         summary: s,
+        summaryMeta: row ? { model: row.model, createdAt: row.createdAt } : null,
         symbolPurpose: fileSummary?.symbols.find((s) => s.nodeId === id)?.purpose ?? null,
         features: featuresOf(id, lang),
         upstream,
