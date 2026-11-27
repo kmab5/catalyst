@@ -21,69 +21,71 @@ export async function summarize({ s, client, root, attempt }: StageContext) {
   for (const group of dependencyGroups(s)) {
     const cycle = new Set(group.map((f) => ids.file(f.path)));
     await Promise.all(
-      group.map((file) =>
-        attempt(file.path, async () => {
-          const id = ids.file(file.path),
-            context = fileContext(file, s, model, cycle);
-          if (s.summaries.get(id)?.inputHash === context.inputHash) return;
-          const full = await assembleFileContext(file, s, model, root, cycle);
-          const isTest = testFile(file.path);
-          let summary: FileSummary;
-          if (isTest || file.loc < 3 || full.isBarrel) {
-            const description =
-              s.lang === 'tr'
-                ? isTest
-                  ? 'Test dosyası'
-                  : full.isBarrel
-                    ? 'Yeniden dışa aktarım'
-                    : 'Kısa kaynak dosyası'
-                : isTest
-                  ? 'Tests'
-                  : full.isBarrel
-                    ? 'Re-exports'
-                    : 'Short source file';
-            const purpose = description + ' · ' + file.path;
-            summary = {
-              nodeId: id,
-              purpose,
-              details: purpose,
-              role: isTest ? 'test' : 'other',
-              positionInApp: '',
-              sideEffects: [],
-              tags: isTest ? ['test'] : [],
-              symbols: [],
-              featureHints: [],
-              confidence: 1,
-            };
-          } else {
-            summary = await client.object('summarize', {
-              tier: 'fast',
-              schema: FileSummary,
-              schemaName: 'FileSummary',
-              system:
-                preamble(s.lang) +
-                ' Explain the file purpose, position in the app, key symbols and effects.',
-              prompt: full.prompt,
-            });
-          }
-          const allowed = new Set(context.allowedIds);
-          summary = cleanStrings(
-            {
-              ...summary,
-              nodeId: id,
-              symbols: summary.symbols.filter(
-                (n) => allowed.has(n.nodeId) && s.nodes.get(n.nodeId)?.kind === 'symbol',
-              ),
-              sideEffects: summary.sideEffects.filter((e) => !e.target || allowed.has(e.target)),
-            },
-            (id) => allowed.has(id),
-          );
-          for (const edge of context.deterministic)
-            if (!summary.sideEffects.some((e) => e.kind === edge.kind && e.target === edge.target))
-              summary.sideEffects.push(edge);
-          s.saveSummary(summary, context.inputHash, model);
-        }),
-      ),
+      group
+        .filter((file) => file.tier !== 3)
+        .map((file) =>
+          attempt(file.path, async () => {
+            const id = ids.file(file.path),
+              context = fileContext(file, s, model, cycle);
+            if (s.summaries.get(id)?.inputHash === context.inputHash) return;
+            const full = await assembleFileContext(file, s, model, root, cycle);
+            const isTest = testFile(file.path);
+            let summary: FileSummary;
+            if (isTest || file.loc < 3 || full.isBarrel) {
+              const description =
+                s.lang === 'tr'
+                  ? isTest
+                    ? 'Test dosyası'
+                    : full.isBarrel
+                      ? 'Yeniden dışa aktarım'
+                      : 'Kısa kaynak dosyası'
+                  : isTest
+                    ? 'Tests'
+                    : full.isBarrel
+                      ? 'Re-exports'
+                      : 'Short source file';
+              const purpose = description + ' · ' + file.path;
+              summary = {
+                nodeId: id,
+                purpose,
+                details: purpose,
+                role: isTest ? 'test' : 'other',
+                positionInApp: '',
+                sideEffects: [],
+                tags: isTest ? ['test'] : [],
+                symbols: [],
+                featureHints: [],
+                confidence: 1,
+              };
+            } else {
+              summary = await client.object('summarize', {
+                tier: 'fast',
+                schema: FileSummary,
+                schemaName: 'FileSummary',
+                system:
+                  preamble(s.lang) +
+                  ' Explain the file purpose, position in the app, key symbols and effects.',
+                prompt: full.prompt,
+              });
+            }
+            const allowed = new Set(context.allowedIds);
+            summary = cleanStrings(
+              {
+                ...summary,
+                nodeId: id,
+                symbols: summary.symbols.filter(
+                  (n) => allowed.has(n.nodeId) && s.nodes.get(n.nodeId)?.kind === 'symbol',
+                ),
+                sideEffects: summary.sideEffects.filter((e) => !e.target || allowed.has(e.target)),
+              },
+              (id) => allowed.has(id),
+            );
+            for (const edge of context.deterministic)
+              if (!summary.sideEffects.some((e) => e.kind === edge.kind && e.target === edge.target))
+                summary.sideEffects.push(edge);
+            s.saveSummary(summary, context.inputHash, model);
+          }),
+        ),
     );
   }
 }
