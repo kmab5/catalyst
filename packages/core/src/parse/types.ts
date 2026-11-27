@@ -16,4 +16,7 @@ export interface ParsedFile {
  directives:string[];exportedNames:string[];partial:boolean;env:{callerSymbol:string;name:string;line:number}[];
 }
 export interface FileInput {path:string;source:string;parser:Parser}
+export function emptyParsedFile(path:string):ParsedFile {
+ return {path,symbols:[],imports:[],exports:[],calls:[],jsx:[],refs:[],decorators:[],strings:[],complexity:{},directives:[],exportedNames:[],partial:false,env:[]};
+}
 export interface LanguageAdapter {languages:string[];parse:(input:FileInput)=>ParsedFile}

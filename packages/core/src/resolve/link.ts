@@ -4,6 +4,7 @@ import type {ParsedFile} from '../parse/types.js';
 import type {SourceFile} from '../scan/scanner.js';
 import {TsResolver,readJson} from './ts-resolver.js';
 import {PyResolver} from './py-resolver.js';
+import {goLink} from './go-link.js';
 
 export type Binding={kind:'symbol'|'package'|'module';id:string};
 export function link(model:Model,files:SourceFile[],parsed:Record<string,ParsedFile>) {
@@ -31,6 +32,7 @@ export function link(model:Model,files:SourceFile[],parsed:Record<string,ParsedF
   }
   for(const p of Object.values(parsed)){
     const map=new Map<string,Binding>(); bindings.set(p.path,map);
+    if(sources.get(p.path)?.language==='go')continue;
     const imports=new Set<string>();
     const isPy=sources.get(p.path)?.language==='python';
     const allImports=[...p.imports,...p.exports.filter(e=>e.specifier).map(e=>({specifier:e.specifier!,names:[{imported:e.local,local:e.exported}],isTypeOnly:false,line:1}))];
@@ -49,7 +51,7 @@ export function link(model:Model,files:SourceFile[],parsed:Record<string,ParsedF
           const def=isPy?('symbol'in r&&typeof r.symbol==='string'?{file:r.path,name:r.symbol}:null):ts.resolveBinding(p.path,imp.specifier,imported,exports);
           const id=def?local.get(def.file)?.get(def.name):undefined;
           if(alias)map.set(alias,id?{kind:'symbol',id}:{kind:'module',id:dst});
-          if(id)importedSymbols.add(id);
+          if(id&&!model.nodes.get(ids.file(p.path))?.data?.isTest)importedSymbols.add(id);
         }
         model.edge(ids.file(p.path),dst,'imports',p.path,imp.line,'resolved',1,{names:imported?[imported]:[],typeOnly:imp.isTypeOnly,specifier:imp.specifier});
       }
@@ -82,6 +84,7 @@ export function link(model:Model,files:SourceFile[],parsed:Record<string,ParsedF
     for(const j of p.jsx)resolve(j.callerSymbol,j.name,'renders',j.line);
     for(const ref of p.refs)resolve(ref.callerSymbol,ref.name,ref.kind,ref.line);
   }
+  goLink(model,files,parsed);
   return {bindings,unresolved,importedSymbols,local};
 }
 export type Linked=ReturnType<typeof link>;

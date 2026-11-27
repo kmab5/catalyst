@@ -10,7 +10,7 @@ export interface SourceFile {
   parsedHash:string|null; parseError:string|null; source:string;
 }
 export interface ScanOptions {
-  extraIgnore?:string[]; include?:string[]; maxFileBytes?:number; signal?:AbortSignal;
+  extraIgnore?:string[]; include?:string[]; maxFileBytes?:number; signal?:AbortSignal;tier3?:boolean;
 }
 const builtins = ['node_modules/','.git/','.catalyst/','dist/','build/','out/','.next/','.nuxt/','.svelte-kit/','.turbo/','.vercel/','coverage/','.cache/','venv/','.venv/','__pycache__/','.mypy_cache/','.pytest_cache/','.tox/','target/','vendor/','*.map','next-env.d.ts','package-lock.json','pnpm-lock.yaml','yarn.lock','bun.lockb','poetry.lock','Pipfile.lock','uv.lock','Cargo.lock','go.sum'];
 
@@ -62,6 +62,7 @@ export async function scan(root:string, options:ScanOptions={}, progress?:(n:num
           }
         }
       } catch (error) { file.parseError=String(error); }
+      if(file.tier===2 && file.language!=='go' || ['sql','yaml','toml','json','graphql','vue','svelte','dockerfile'].includes(file.language))file.tier=options.tier3?3:0;
       if(file.parseError) file.tier=0;
       files.push(file);
       if(files.length%25===0) progress?.(files.length,files.length);

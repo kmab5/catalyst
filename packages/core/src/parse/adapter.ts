@@ -1,5 +1,6 @@
 import type Parser from 'web-tree-sitter';
 import type {FileInput,ParsedFile,RawImport,RawSymbol} from './types.js';
+import {emptyParsedFile} from './types.js';
 
 type Node=Parser.SyntaxNode;
 const field=(n:Node,k:string)=>n.childForFieldName(k);
@@ -43,7 +44,7 @@ function parseImports(n:Node,py:boolean) {
 
 export function parseFile({parser,source,path}:FileInput,py=false):ParsedFile {
   const tree=parser.parse(source);
-  const p:ParsedFile={path,symbols:[],imports:[],exports:[],calls:[],jsx:[],refs:[],decorators:[],strings:[],complexity:{},directives:[],exportedNames:[],partial:false,env:[]};
+  const p=emptyParsedFile(path);
   const seen=new Set<string>();
   const lines=source.split(/\r?\n/);
   const visit=(n:Node,caller:string,className:string|undefined,guarded:boolean) => {
@@ -79,7 +80,8 @@ export function parseFile({parser,source,path}:FileInput,py=false):ParsedFile {
         exported:py?caller==='<module>'&&!name.startsWith('_'):Boolean(exported),parentName,
         signature:(body?source.slice(n.startIndex,body.startIndex):text).replace(/\s+/g,' ').trim().slice(0,160),
         loc:lines.slice(line(n)-1,endLine).filter(l=>l.trim()&&!/^\s*(?:\/\/|#)/.test(l)).length};
-      const params=field(callable,'parameters')?.text.replace(/[()\s]/g,'');
+      const params=field(callable,'parameters')?.namedChildren.map(param=>
+        (field(param,'pattern')??field(param,'name')??param).text).join(',')??field(callable,'parameter')?.text;
       const pass=body?.text.match(/^(?:\{\s*return\s+|return\s+)?([\w$.]+)\s*\(([\w$,\s]*)\)\s*;?\s*\}?$/);
       if(pass && params===pass[2]!.replace(/\s/g,'')) symbol.passThrough=pass[1];
       p.symbols.push(symbol);
