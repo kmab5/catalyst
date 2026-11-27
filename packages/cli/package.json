@@ -1,26 +1,35 @@
 {
   "name": "catalyst-dx",
   "version": "0.1.0",
+  "description": "Explore the features, dependencies and health of a local codebase.",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@catalyst/shared": "workspace:*",
-    "@catalyst/core": "workspace:*",
-    "@catalyst/server": "workspace:*"
-  },
+  "license": "MIT",
   "bin": {
     "catalyst": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/pnpm.mjs --filter @catalyst/web build && tsup && node scripts/copy-assets.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:pack": "vitest run scripts/pack.test.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "web-tree-sitter": "0.22.6",
+    "commander": "13.1.0",
+    "open": "10.2.0",
+    "picocolors": "1.1.1"
+  },
+  "devDependencies": {
+    "@catalyst/core": "workspace:*",
+    "@catalyst/server": "workspace:*",
+    "@catalyst/shared": "workspace:*",
+    "tree-sitter-wasms": "0.1.13"
   }
 }
