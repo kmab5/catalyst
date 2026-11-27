@@ -109,6 +109,7 @@ These are provider-dependent acceptance checks. For a live run, choose OpenRoute
 | Features | Start AI indexing. Look for authentication, billing/subscriptions, posts/editor, dashboard and marketing/docs. | Review membership against the actual routes and files. Follow a billing flow step to source. Generated titles and grouping can vary. |
 | Ask, positive | Run `node $cli ask 'Where are Stripe webhooks handled?' $tax --json`. Repeat in the UI and open a citation. | A grounded answer identifies `app/api/webhooks/stripe/route.ts` and opens the handler. |
 | Ask, negative | Ask “Is there password reset?” and inspect the search evidence. | Expect `found: false` with a searched list for this revision. Investigate an affirmative answer by opening its cited implementation. |
+| Ask, background | In browser DevTools, open Network and filter for `/ask`. Submit one question, leave for Explorer while it streams, then return to Ask. Repeat using Back and Forward. | There is one Ask POST. The answer continues in the background, and returning shows its progress or completed citations. |
 | Cache | After a completed AI run, review the estimate and repeat with identical models, language and source. Compare cached summary counts and calls with the first pass. | Unchanged summaries can be reused. For deterministic cache coverage, run `pnpm --filter @catalyst/core exec vitest run src/ai/ai.test.ts -t 'caches validated output'`. |
 
 ## MCP over stdio

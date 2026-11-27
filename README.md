@@ -31,6 +31,8 @@ node packages/cli/dist/index.js serve $demo
 
 The index result should contain `"status":"done"` and `"llmCalls":0`. Open the printed URL, find `lib/session.ts` in **Explorer**, then open **Health** to see the cycle between `lib/a.ts` and `lib/b.ts`. Press **Ctrl+C** in the terminal to stop the server. The index and any edits to the fixture's `.gitignore` live in the temporary copy.
 
+For Git Impact, open a Git checkout with a tracked file change. The temporary fixture above is a plain folder. The [public repository testing guide](plan/docs/test-repos.md) includes a repeatable working-tree comparison and six repositories for testing the other workflows.
+
 To run the automated checks after installing and building:
 
 ```powershell

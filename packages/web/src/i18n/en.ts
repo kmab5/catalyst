@@ -4,6 +4,21 @@ import { workflowEnglish } from './workflows';
 export const en = {
   ...explorerMessages,
   ...workflowEnglish,
+  'workspace.explore': 'Explore code',
+  'workspace.review': 'Investigate',
+  'workspace.provider': 'AI settings',
+  'workspace.actions': 'Explore this repository',
+  'workspace.files': 'Browse source files',
+  'workspace.graph': 'Trace dependencies',
+  'workspace.diff': 'Review working changes',
+  'workspace.ask': 'Ask about the code',
+  'workspace.summary': 'Repository overview',
+  'workspace.answering': 'Answering…',
+  'launcher.openNamed': 'Open {name}',
+  'launcher.browseNamed': 'Browse {name}',
+  'launcher.start': 'Open a repository',
+  'launcher.pathHelp': 'Enter a local path, or choose a folder below.',
+
   'settings.intro':
     'Configure which AI provider writes plain-English summaries, features, and Ask answers.',
   'settings.disconnect': 'Disconnect (structure only)',
@@ -64,7 +79,7 @@ export const en = {
   'noAi.overview': 'Showing detected stack, entry points, and health structure.',
   'noAi.features':
     'Showing structural groupings. Connect an AI provider to name features and trace flows.',
-  'noAi.ask': 'Ask requires an AI provider. You can still use Find and Search (⌘K).',
+  'noAi.ask': 'Ask requires an AI provider. You can still search files and symbols.',
   'noAi.xray': 'Showing static callers, callees, side effects, and health flags.',
   'provenance.ast': 'AST',
   'provenance.ast.help': 'Read directly from the syntax tree.',

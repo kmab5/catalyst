@@ -1,6 +1,21 @@
 import { expect, test } from '@playwright/test';
 import { GraphResponse, HealthResponse, ids } from '@catalyst/shared';
 
+test('phone navigation exposes every workspace view and the repository actions', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /ts-basic.*ready/i }).first().click();
+  const navigation = page.getByRole('navigation', { name: 'Project navigation' });
+  for (const name of ['Overview', 'Features', 'Explorer', 'Graph', 'Health', 'Impact', 'Ask']) {
+    await expect(navigation.getByRole('link', { name, exact: true })).toBeInViewport();
+  }
+  await page.getByRole('link', { name: 'Browse source files' }).click();
+  await expect(page.getByTestId('page-explorer')).toBeVisible();
+  await navigation.getByRole('link', { name: 'Impact' }).click();
+  await expect(page).toHaveURL(/\/impact$/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});
+
 test('open a structural index and explore the fixture', async ({ page, request }) => {
   const health = HealthResponse.parse(await (await request.get('/api/health')).json());
   expect(health.mock).toBe(false);

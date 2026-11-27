@@ -2,8 +2,8 @@ import { ids } from '@/api/contract';
 import { t } from '@/i18n/t';
 import { NodeIdLink } from '@/components/NodeIdLink';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
-import { AlertTriangle, ArrowRight } from 'lucide-react';
+import { Link, useParams, useSearchParams } from 'react-router';
+import { AlertTriangle, ArrowRight, FolderTree, Share2, GitCompareArrows, MessageSquareText } from 'lucide-react';
 import { useOverview } from '@/api/hooks/queries';
 import { PageSkeleton } from '@/components/Skeleton';
 import { ErrorCard } from '@/components/ErrorCard';
@@ -15,6 +15,8 @@ import { Markdown } from '@/components/Markdown';
 
 export function Overview() {
   const { pid } = useParams<{ pid: string }>();
+  const [params] = useSearchParams();
+  const lang = params.get('lang');
   const { data, isLoading, error, refetch } = useOverview(pid);
   const [openStack, setOpenStack] = useState<string | null>(null);
 
@@ -36,10 +38,10 @@ export function Overview() {
   const evidenceRefs = entryPoints;
 
   return (
-    <div data-testid="page-overview" className="mx-auto max-w-4xl px-8 py-8 space-y-10">
+    <div data-testid="page-overview" className="overview-workspace">
       <header className="space-y-4">
         <div className="text-xs font-mono uppercase tracking-wider text-[var(--text-muted)]">
-          {project.name}
+          {t('workspace.summary')}
         </div>
         {overview ? (
           <>
@@ -58,6 +60,20 @@ export function Overview() {
         )}
       </header>
 
+      <nav className="overview-actions" aria-label={t('workspace.actions')}>
+        {([
+          ['explorer', 'workspace.files', FolderTree],
+          ['graph', 'workspace.graph', Share2],
+          ['impact', 'workspace.diff', GitCompareArrows],
+          ['ask', 'workspace.ask', MessageSquareText],
+        ] as const).map(([path, label, Icon]) => (
+          <Link key={path} to={{ pathname: `/p/${pid}/${path}`, search: lang ? '?' + new URLSearchParams({lang}) : '' }}>
+            <Icon size={17} aria-hidden="true" />
+            <span>{t(label)}</span>
+            <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        ))}
+      </nav>
       {stack.length > 0 && (
         <section className="space-y-2.5">
           <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -95,7 +111,7 @@ export function Overview() {
         </section>
       )}
 
-      {overview && visibleFeatures.length > 0 && (
+      {visibleFeatures.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">

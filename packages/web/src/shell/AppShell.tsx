@@ -73,7 +73,7 @@ export function AppShell() {
       {project?.aiStatus === 'partial' && project.status !== 'indexing' && (
         <PartialAiStrip disabled={start.isPending} onContinue={() => beginIndex(true)} />
       )}
-      <div className="flex min-h-0 flex-1">
+      <div className="workspace-layout flex min-h-0 flex-1">
         {pid && (
           <LeftNav
             pid={pid}

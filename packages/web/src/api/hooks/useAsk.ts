@@ -133,7 +133,7 @@ function createSession(pid: string) {
 // Scope conversations to the running app so route changes only detach the view.
 const sessions = new WeakMap<QueryClient, Map<string, ReturnType<typeof createSession>>>();
 
-export function useAsk(pid: string) {
+function useProjectSession(pid: string) {
   const client = useQueryClient();
   let projects = sessions.get(client);
   if (!projects) {
@@ -145,6 +145,16 @@ export function useAsk(pid: string) {
     session = createSession(pid);
     projects.set(pid, session);
   }
+  return session;
+}
+
+export function useAskStreaming(pid: string) {
+  const session = useProjectSession(pid);
+  return useSyncExternalStore(session.subscribe, () => session.snapshot().status === 'streaming');
+}
+
+export function useAsk(pid: string) {
+  const session = useProjectSession(pid);
   const snapshot = useSyncExternalStore(session.subscribe, session.snapshot);
   return { ...snapshot, ask: session.ask, cancel: session.cancel };
 }

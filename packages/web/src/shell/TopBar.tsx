@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Search, Settings, ChevronDown } from 'lucide-react';
+import { Search, Settings, ChevronDown, Workflow } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ProjectDTO } from '@/api/contract';
 import { useProjects } from '@/api/hooks/queries';
@@ -99,26 +99,27 @@ export function TopBar({
   statusSlot?: ReactNode;
 }) {
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--surface)] px-4">
+    <header className="workspace-topbar flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--surface)] px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <Link to="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+        <Link to="/" aria-label={t('app.name')} className="workspace-brand flex items-center gap-2 text-lg font-semibold tracking-tight">
           <span aria-hidden="true" className="text-[var(--accent)]">
-            ◆
+            <Workflow size={21} />
           </span>
-          {t('app.name')}
+          <span>{t('app.name')}</span>
         </Link>
         {project && <ProjectSwitcher project={project} onReindex={onReindex} />}
       </div>
       {hasProject && (
         <button
           type="button"
+          aria-label={t('topbar.searchPlaceholder')}
           onClick={onOpenPalette}
-          className="flex w-full max-w-md items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-left text-xs text-[var(--text-muted)] hover:border-[var(--text-muted)]"
+          className="workspace-search flex w-full max-w-md items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-left text-xs text-[var(--text-muted)] hover:border-[var(--text-muted)]"
         >
-          <Search size={14} />
+          <Search size={16} className="shrink-0" />
           <span className="flex-1 truncate">{t('topbar.searchPlaceholder')}</span>
           <kbd className="hidden rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] sm:inline-block">
-            ⌘K
+            {/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}
           </kbd>
         </button>
       )}

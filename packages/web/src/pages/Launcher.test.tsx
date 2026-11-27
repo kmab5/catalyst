@@ -38,7 +38,7 @@ test('opening a stale project preserves its existing AI index until the estimate
   expect(start).not.toHaveBeenCalled();
 });
 
-test('double-clicking a directory opens the selected project', async () => {
+test('the explicit Open action opens a listed directory', async () => {
   vi.stubGlobal('fetch', fetch);
   const f = getFixture();
   const project = f.projects[0]!;
@@ -46,8 +46,8 @@ test('double-clicking a directory opens the selected project', async () => {
   const { router } = renderPage(<Launcher />, '/', '/', [
     { path: '/p/:pid/overview', element: <p>Overview</p> },
   ]);
-  await userEvent.dblClick(
-    await screen.findByRole('button', { name: /taxonomy project indexed/i }),
+  await userEvent.click(
+    await screen.findByRole('button', { name: /^open taxonomy$/i }),
   );
   await waitFor(() => expect(router.state.location.pathname).toBe(`/p/${project.id}/overview`));
 });

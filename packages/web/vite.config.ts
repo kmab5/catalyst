@@ -31,6 +31,7 @@ function devLaunchToken(): Plugin {
 export default defineConfig(({ mode }) => ({
   // All supported browsers handle destructured parameters in React components.
   esbuild: { supported: { destructuring: true } },
+  optimizeDeps: { esbuildOptions: { supported: { destructuring: true } } },
   plugins: [
     react(),
     tailwindcss(),
