@@ -94,4 +94,4 @@ CREATE VIRTUAL TABLE search_fts USING fts5(
   node_id UNINDEXED, kind UNINDEXED,
   name, path, summary, tags, code,
   tokenize = 'porter unicode61'
-);`
+);`;
