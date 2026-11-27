@@ -43,7 +43,7 @@ export function ErrorCard({
                 to="/settings"
                 className="rounded-md bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
               >
-                Check provider in Settings
+                {t('errors.provider')}
               </Link>
             )}
           </div>

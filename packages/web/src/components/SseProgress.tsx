@@ -95,7 +95,7 @@ export function SseProgress({
 
             <div className="flex items-center gap-3 text-xs text-[var(--text-muted)] font-mono shrink-0">
               {ev?.message && <span>{ev.message}</span>}
-              {!ev?.message && ev && ev.total > 0 && (
+              {ev && ev.total > 0 && (
                 <span>
                   {ev.done}/{ev.total}
                 </span>

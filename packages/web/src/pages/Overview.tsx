@@ -1,3 +1,6 @@
+import { ids } from '@/api/contract';
+import { t } from '@/i18n/t';
+import { NodeIdLink } from '@/components/NodeIdLink';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
@@ -27,8 +30,8 @@ export function Overview() {
 
   const { overview, stack, features, entryPoints, health, project } = data;
   const visibleFeatures = [...features].sort((a, b) => {
-    if (a.id === 'feature:shared') return 1;
-    if (b.id === 'feature:shared') return -1;
+    if (a.id === ids.feature('shared')) return 1;
+    if (b.id === ids.feature('shared')) return -1;
     return 0;
   });
 
@@ -46,18 +49,18 @@ export function Overview() {
               {overview.oneLiner}
             </h1>
             <div className="prose-measure text-sm text-[var(--text-muted)] whitespace-pre-line">
-              {overview.description}
+              <Markdown text={overview.description} citations={evidenceRefs} resolveCitations />
             </div>
           </>
         ) : (
-          <NoAIBanner context="overview" />
+          <><h1 className="text-3xl font-semibold">{project.name}</h1><NoAIBanner context="overview" /></>
         )}
       </header>
 
       {stack.length > 0 && (
         <section className="space-y-2.5">
           <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            Built with
+            {t('overview.stack')}
           </h2>
           <div className="flex flex-wrap gap-2">
             {stack.map((item) => {
@@ -77,20 +80,11 @@ export function Overview() {
                   {isOpen && item.evidence.length > 0 && (
                     <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5 shadow-md space-y-1">
                       <div className="text-[11px] font-medium text-[var(--text-muted)]">
-                        Evidence
+                        {t('overview.evidence')}
                       </div>
                       {item.evidence.map((ev) => (
                         <div key={ev} className="truncate">
-                          <NodeLink
-                            node={{
-                              id: ev,
-                              kind: ev.startsWith('file:') ? 'file' : 'package',
-                              name: ev.replace(/^file:/, ''),
-                              filePath: ev.startsWith('file:') ? ev.slice(5) : null,
-                              startLine: null,
-                              provenance: 'resolved',
-                            }}
-                          />
+                          <NodeIdLink id={ev} />
                         </div>
                       ))}
                     </div>
@@ -106,13 +100,13 @@ export function Overview() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-              What it does
+              {t('overview.features')}
             </h2>
             <Link
               to={`/p/${pid}/features`}
               className="text-xs text-[var(--accent)] hover:underline inline-flex items-center gap-1"
             >
-              <span>All features</span>
+              <span>{t('overview.allFeatures')}</span>
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
@@ -152,16 +146,16 @@ export function Overview() {
       {overview?.architecture && (
         <section className="space-y-2">
           <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            How it fits together
+            {t('overview.architecture')}
           </h2>
-          <Markdown text={overview.architecture} citations={evidenceRefs} />
+          <Markdown text={overview.architecture} citations={evidenceRefs} resolveCitations />
         </section>
       )}
 
       {entryPoints.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            Where people enter
+            {t('overview.entries')}
           </h2>
           <div className="flex flex-wrap gap-1.5">
             {entryPoints.map((ep) => (
@@ -174,7 +168,7 @@ export function Overview() {
       {overview && overview.gaps.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            Things that may be missing
+            {t('overview.gaps')}
           </h2>
           <ul className="space-y-1.5">
             {overview.gaps.map((gap) => (
@@ -183,7 +177,7 @@ export function Overview() {
                 className="flex items-center gap-2 text-sm text-[var(--text-muted)]"
               >
                 <AlertTriangle className="h-3.5 w-3.5 text-[var(--sev-warn)] shrink-0" />
-                <span>{gap}</span>
+                <Markdown text={gap} citations={evidenceRefs} resolveCitations />
               </li>
             ))}
           </ul>
@@ -193,13 +187,13 @@ export function Overview() {
       <section className="space-y-3 border-t border-[var(--border)] pt-6">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-            Structure health
+            {t('overview.health')}
           </h2>
           <Link
             to={`/p/${pid}/health`}
             className="text-xs text-[var(--accent)] hover:underline inline-flex items-center gap-1"
           >
-            <span>Open Health</span>
+            <span>{t('overview.openHealth')}</span>
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>

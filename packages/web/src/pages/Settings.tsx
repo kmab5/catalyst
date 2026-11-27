@@ -5,7 +5,7 @@ import {
   useTestProvider,
   useUpdateSettings,
 } from '@/api/hooks/queries';
-import type { Lang, ProviderConfig, ProviderType, SettingsUpdate } from '@/api/contract';
+import { ProviderConfig, type Lang, type ProviderType, type SettingsUpdate } from '@/api/contract';
 import { PageSkeleton } from '@/components/Skeleton';
 import { ErrorCard } from '@/components/ErrorCard';
 import { t } from '@/i18n/t';
@@ -19,7 +19,12 @@ const MODEL_SUGGESTIONS: Record<ProviderType, { fast: string; smart: string }> =
 };
 
 function isLocalhostUrl(url: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i.test(url.trim());
+  try {
+    const { protocol, hostname } = new URL(url);
+    return ['http:', 'https:'].includes(protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  } catch {
+    return false;
+  }
 }
 
 export function Settings() {
@@ -30,6 +35,7 @@ export function Settings() {
 
   const [providerType, setProviderType] = useState<ProviderType | 'none'>('openrouter');
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [removeKey, setRemoveKey] = useState(false);
   const [baseUrl, setBaseUrl] = useState('https://openrouter.ai/api/v1');
   const [binary, setBinary] = useState('claude');
   const [fastModel, setFastModel] = useState('');
@@ -61,6 +67,7 @@ export function Settings() {
     setConcurrency(settings.concurrency);
     setApiKeyInput('');
     setProviderDirty(false);
+    setRemoveKey(false);
   }, [settings]);
 
   useEffect(() => {
@@ -82,32 +89,31 @@ export function Settings() {
     );
   }
 
-  function buildProviderConfig(): ProviderConfig | null | undefined {
+  function buildProviderConfig(): SettingsUpdate['provider'] {
     if (providerType === 'none') return null;
     if (providerType === 'claude-code') {
       return { type: 'claude-code', binary: binary || 'claude' };
     }
+    const key = removeKey ? { apiKey: null } : apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {};
     if (providerType === 'openai-compatible') {
       return {
         type: 'openai-compatible',
         baseUrl: baseUrl || 'http://localhost:11434/v1',
         name: isLocalhostUrl(baseUrl) ? 'ollama' : 'custom',
-        ...(apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {}),
+        ...key,
       };
     }
     if (providerType === 'anthropic') {
-      if (!apiKeyInput.trim()) return undefined;
-      return { type: 'anthropic', apiKey: apiKeyInput.trim() };
+      return { type: 'anthropic', ...key };
     }
-    if (!apiKeyInput.trim()) return undefined;
     return {
       type: 'openrouter',
-      apiKey: apiKeyInput.trim(),
+      ...key,
       baseUrl: baseUrl || 'https://openrouter.ai/api/v1',
     };
   }
 
-  async function handleSave(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSavedNotice(false);
 
@@ -125,10 +131,12 @@ export function Settings() {
       }
     }
 
-    await updateMut.mutateAsync(payload);
-    setApiKeyInput('');
-    setProviderDirty(false);
-    setSavedNotice(true);
+    updateMut.mutate(payload, { onSuccess: () => {
+      setApiKeyInput('');
+      setRemoveKey(false);
+      setProviderDirty(false);
+      setSavedNotice(true);
+    } });
   }
 
   const showKeyField =
@@ -136,34 +144,40 @@ export function Settings() {
     providerType === 'anthropic' ||
     providerType === 'openai-compatible';
 
+  const maskedKey = providerType === settings?.provider?.type ? settings?.provider?.apiKeyMasked : null;
+  const keyRequired = !maskedKey && (providerType === 'openrouter' || providerType === 'anthropic');
+  const testingDraft = providerDirty || Boolean(apiKeyInput.trim());
+  const testConfig = testingDraft ? ProviderConfig.safeParse(buildProviderConfig()) : undefined;
+  const canTestDraft = !testingDraft || (testConfig?.success && !removeKey &&
+    !(maskedKey && !apiKeyInput.trim() && providerType === 'openai-compatible'));
   const providerOptions: { id: ProviderType; title: string; subtitle: string; badge?: string }[] = [
     ...(detected?.claudeCli.found
       ? [
           {
             id: 'claude-code' as const,
             title: `Claude Code CLI (detected${detected.claudeCli.version ? ` v${detected.claudeCli.version}` : ''})`,
-            subtitle: 'Billed to your Claude plan, no API key needed.',
+            subtitle: t('settings.claudePlan'),
           },
         ]
       : []),
     {
       id: 'openrouter',
       title: 'OpenRouter',
-      subtitle: 'Recommended — one key covers Anthropic, OpenAI, and open models.',
-      badge: 'Recommended',
+      subtitle: t('settings.routerHelp'),
+      badge: t('settings.recommended'),
     },
     {
       id: 'anthropic',
       title: 'Anthropic',
-      subtitle: 'Direct Anthropic API key.',
+      subtitle: t('settings.anthropicHelp'),
     },
     {
       id: 'openai-compatible',
       title: 'OpenAI-compatible / Ollama',
-      subtitle: 'OpenAI, Groq, Together, Ollama, or LM Studio.',
+      subtitle: t('settings.compatibleHelp'),
       badge:
         providerType === 'openai-compatible' && isLocalhostUrl(baseUrl)
-          ? 'Fully local'
+          ? t('settings.local')
           : undefined,
     },
     ...(!detected?.claudeCli.found
@@ -171,7 +185,7 @@ export function Settings() {
           {
             id: 'claude-code' as const,
             title: 'Claude Code CLI',
-            subtitle: 'Uses local `claude` CLI binary.',
+            subtitle: t('settings.claudeHelp'),
           },
         ]
       : []),
@@ -182,11 +196,13 @@ export function Settings() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Configure which AI provider writes plain-English summaries, features, and Ask answers.
+          {t('settings.intro')}
         </p>
       </header>
 
-      <form onSubmit={handleSave} className="space-y-8">
+      {updateMut.error && <ErrorCard error={updateMut.error} />}
+      {testMut.error && <ErrorCard error={testMut.error} />}
+      <form onChange={() => setSavedNotice(false)} onSubmit={handleSave} className="space-y-8">
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium">{t('settings.provider')}</h2>
@@ -199,7 +215,7 @@ export function Settings() {
                 }}
                 className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline"
               >
-                Disconnect (structure only)
+                {t('settings.disconnect')}
               </button>
             )}
           </div>
@@ -222,6 +238,8 @@ export function Settings() {
                   checked={providerType === opt.id}
                   onChange={() => {
                     setProviderType(opt.id);
+                    setApiKeyInput('');
+                    setRemoveKey(false);
                     setProviderDirty(true);
                     const def = MODEL_SUGGESTIONS[opt.id];
                     setFastModel(def.fast);
@@ -253,9 +271,10 @@ export function Settings() {
               {providerType === 'openai-compatible' && (
                 <div>
                   <label className="block text-xs font-medium mb-1">
-                    Base URL
+                    {t('settings.baseUrl')}
                     <input
-                      type="text"
+                      type="url"
+                      required
                       value={baseUrl}
                       onChange={(e) => {
                         setBaseUrl(e.target.value);
@@ -275,28 +294,37 @@ export function Settings() {
               <div>
                 <div className="flex items-center justify-between">
                   <label htmlFor="api-key-input" className="text-xs font-medium">
-                    API key
+                    {t('settings.apiKey')}
                   </label>
-                  {settings?.provider?.apiKeyMasked && (
+                  {maskedKey && (
                     <span className="font-mono text-xs text-[var(--text-muted)]">
-                      Saved: {settings.provider.apiKeyMasked}
-                      {settings.provider.apiKeySource === 'env' ? ' (from env)' : ''}
+                      Saved: {maskedKey}
+                      {settings?.provider?.apiKeySource === 'env' ? ' (from env)' : ''}
                     </span>
                   )}
                 </div>
                 <input
                   id="api-key-input"
-                  aria-label="API key"
+                  aria-label={t('settings.apiKey')}
                   type="password"
+                  required={keyRequired}
+                  autoComplete="new-password"
                   value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  onChange={(e) => { setApiKeyInput(e.target.value); setRemoveKey(false); }}
                   placeholder={
-                    settings?.provider?.apiKeyMasked
-                      ? 'Leave blank to keep existing key'
+                    maskedKey
+                      ? t('settings.keep')
                       : 'sk-...'
                   }
                   className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 font-mono text-xs"
                 />
+                {maskedKey && (
+                  <button type="button" className="mt-2 text-xs text-[var(--accent)]" onClick={() => {
+                    setRemoveKey(!removeKey);
+                    setApiKeyInput('');
+                    setProviderDirty(true);
+                  }}>{removeKey ? t('settings.undoRemove') : t('settings.removeKey')}</button>
+                )}
               </div>
             </div>
           )}
@@ -304,14 +332,11 @@ export function Settings() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => {
-                const p = providerDirty || apiKeyInput.trim() ? buildProviderConfig() : undefined;
-                testMut.mutate(p ?? undefined);
-              }}
-              disabled={testMut.isPending}
+              onClick={() => testMut.mutate(testConfig?.success ? testConfig.data : undefined)}
+              disabled={testMut.isPending || !canTestDraft || providerType === 'none'}
               className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface-2)]"
             >
-              {testMut.isPending ? 'Testing…' : t('settings.testConnection')}
+              {testMut.isPending ? t('settings.testing') : t('settings.testConnection')}
             </button>
             {testMut.data && (
               <span
@@ -322,26 +347,36 @@ export function Settings() {
               >
                 {testMut.data.ok
                   ? `Connected · ${testMut.data.latencyMs} ms · ${testMut.data.model}`
-                  : testMut.data.message ?? 'Connection failed'}
+                  : testMut.data.message ?? t('settings.failed')}
               </span>
             )}
           </div>
         </section>
 
+        <datalist id="model-suggestions">
+          {[...new Set([
+            ...(providerType === 'none' ? [] : Object.values(MODEL_SUGGESTIONS[providerType])),
+            ...(providerType === 'openai-compatible' ? detected?.ollama.models ?? [] : []),
+          ])].map(model => <option key={model} value={model} />)}
+        </datalist>
         <section className="grid sm:grid-cols-2 gap-4">
           <label className="block text-xs font-medium">
-            Fast model (summaries)
+            {t('settings.fast')}
             <input
               type="text"
+              list="model-suggestions"
+              required
               value={fastModel}
               onChange={(e) => setFastModel(e.target.value)}
               className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 font-mono text-xs"
             />
           </label>
           <label className="block text-xs font-medium">
-            Smart model (features, overview, Ask)
+            {t('settings.smart')}
             <input
               type="text"
+              list="model-suggestions"
+              required
               value={smartModel}
               onChange={(e) => setSmartModel(e.target.value)}
               className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 font-mono text-xs"
@@ -351,7 +386,7 @@ export function Settings() {
 
         <section className="grid sm:grid-cols-3 gap-4">
           <label className="block text-xs font-medium">
-            AI output language
+            {t('settings.language')}
             <select
               value={outputLanguage}
               onChange={(e) => setOutputLanguage(e.target.value as Lang)}
@@ -363,12 +398,12 @@ export function Settings() {
           </label>
 
           <label className="block text-xs font-medium">
-            Budget cap (USD per run)
+            {t('settings.budget')}
             <input
               type="number"
-              step="0.1"
-              min="0"
-              placeholder="No cap"
+              step="any"
+              min="0.000001"
+              placeholder={t('settings.uncapped')}
               value={budgetUsd}
               onChange={(e) => setBudgetUsd(e.target.value)}
               className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 font-mono text-xs"
@@ -376,7 +411,7 @@ export function Settings() {
           </label>
 
           <label className="block text-xs font-medium">
-            Concurrency (1–32)
+            {t('settings.concurrency')}
             <input
               type="number"
               min={1}
@@ -389,7 +424,7 @@ export function Settings() {
         </section>
 
         <section className="space-y-2">
-          <span className="block text-xs font-medium">Appearance</span>
+          <span className="block text-xs font-medium">{t('settings.appearance')}</span>
           <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--surface)] p-0.5">
             {(['system', 'light', 'dark'] as const).map((mode) => (
               <button
@@ -419,9 +454,9 @@ export function Settings() {
             disabled={updateMut.isPending}
             className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
-            {updateMut.isPending ? 'Saving…' : t('common.save')}
+            {updateMut.isPending ? t('settings.saving') : t('common.save')}
           </button>
-          {savedNotice && <span className="text-xs text-emerald-600">Settings saved.</span>}
+          {savedNotice && <span className="text-xs text-emerald-600">{t('settings.saved')}</span>}
         </div>
       </form>
     </div>

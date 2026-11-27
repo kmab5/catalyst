@@ -1,4 +1,5 @@
-const CITATION_RE = /\[\[([^\]]+)\]\]/g;
+// Route groups can contain nested brackets, e.g. app/docs/[[...slug]]/page.tsx.
+const CITATION_RE = /\[\[((?:dir|file|sym|route|db|env|pkg|svc|feature):(?:[^\[\]\n]|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\])+)\]\]/g;
 
 interface MdastNode {
   type: string;

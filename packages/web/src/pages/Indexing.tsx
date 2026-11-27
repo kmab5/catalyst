@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { api } from '@/api/client';
 import {
   useOverview,
@@ -8,19 +8,27 @@ import {
   useSettings,
 } from '@/api/hooks/queries';
 import { useRunEvents } from '@/api/hooks/useRunEvents';
+import { EstimateDialog } from '@/components/EstimateDialog';
 import { SseProgress } from '@/components/SseProgress';
 import { ErrorCard } from '@/components/ErrorCard';
 import { t } from '@/i18n/t';
 
 export function Indexing() {
   const { pid } = useParams<{ pid: string }>();
+  return pid ? <ProjectIndexing key={pid} pid={pid} /> : null;
+}
+
+function ProjectIndexing({ pid }: { pid: string }) {
   const navigate = useNavigate();
 
   const { data: project } = useProject(pid);
   const { data: settings } = useSettings();
   const { data: detected } = useProvidersDetect();
-  const [runId, setRunId] = useState<string | null>(null);
-  const [startError, setStartError] = useState<unknown>(null);
+  const location = useLocation();
+  const runId: string | undefined = location.state?.runId;
+  const [starting, setStarting] = useState(false);
+  const reviewEstimate = Boolean(location.state?.reviewEstimate);
+  const [failure, setFailure] = useState<{ error: unknown; retry: () => void }>();
 
   const effectiveRunId = runId ?? project?.activeRunId ?? project?.lastRunId ?? null;
   const { events, last, status } = useRunEvents(pid, effectiveRunId);
@@ -33,29 +41,37 @@ export function Indexing() {
   const noProvider = settings && settings.provider === null;
 
   useEffect(() => {
-    if (status === 'done' && pid) {
+    if (status === 'done' && pid && last?.runId === effectiveRunId && (!reviewEstimate || noProvider || last.stage === 'cancelled')) {
       const timer = window.setTimeout(() => {
         navigate(`/p/${pid}/overview`);
       }, 600);
       return () => window.clearTimeout(timer);
     }
-  }, [status, pid, navigate]);
+  }, [status, pid, navigate, reviewEstimate, noProvider, last, effectiveRunId]);
 
-  async function startRun(ai: boolean) {
-    if (!pid) return;
-    setStartError(null);
+  async function startRun(ai: boolean, estimateAfter = false) {
+    if (!pid || starting) return;
+    setStarting(true);
+    setFailure(undefined);
     try {
       const res = await api.index.start(pid, { ai });
-      setRunId(res.runId);
+      navigate(location.pathname, { replace: true, state: { runId: res.runId, reviewEstimate: estimateAfter } });
     } catch (err) {
-      setStartError(err);
+      setFailure({ error: err, retry: () => void startRun(ai, estimateAfter) });
+    } finally {
+      setStarting(false);
     }
   }
 
   async function handleCancel() {
     if (!pid) return;
-    if (effectiveRunId) {
-      await api.index.cancel(pid, effectiveRunId).catch(() => undefined);
+    if (effectiveRunId && status === 'open') {
+      try {
+        await api.index.cancel(pid, effectiveRunId);
+      } catch (error) {
+        setFailure({ error, retry: () => void handleCancel() });
+        return;
+      }
     }
     navigate(`/p/${pid}/overview`);
   }
@@ -82,11 +98,11 @@ export function Indexing() {
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold">Connect AI for plain-English explanations</h2>
+              <h2 className="text-sm font-semibold">{t('indexing.connect')}</h2>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
                 {detected?.claudeCli.found
-                  ? 'Claude Code CLI was detected on your machine, or choose a provider in Settings.'
-                  : 'No AI provider configured yet. You can connect one now or inspect structure only.'}
+                  ? t('indexing.claudeDetected')
+                  : t('indexing.noProvider')}
               </p>
             </div>
             <Link
@@ -98,21 +114,28 @@ export function Indexing() {
           </div>
           <button
             type="button"
-            onClick={() => void startRun(false)}
+            disabled={starting}
+            onClick={() => effectiveRunId ? navigate(`/p/${pid}/overview`) : void startRun(false)}
             className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg)]"
           >
-            Skip (structure only)
+            {t('indexing.structureOnly')}
           </button>
         </div>
       )}
 
-      {startError ? (
-        <ErrorCard error={startError} onRetry={() => void startRun(true)} />
-      ) : null}
+      {reviewEstimate && status === 'done' && settings?.provider && pid && last?.stage === 'done' && (
+        <EstimateDialog pid={pid} pending={starting} onContinue={() => void startRun(true)}
+          onCancel={() => navigate(`/p/${pid}/overview`)} />
+      )}
+      {failure && <ErrorCard error={failure.error} onRetry={failure.retry} />}
+      {!effectiveRunId && project && settings?.provider && (
+        <button type="button" disabled={starting} onClick={() => void startRun(false, true)}
+          className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-white">{t('indexing.start')}</button>
+      )}
 
-      {status === 'error' && last?.message && (
+      {status === 'error' && (
         <ErrorCard
-          error={new Error(last.message)}
+          error={new Error(last?.message ?? t('indexing.interrupted'))}
           onRetry={() => void startRun(true)}
         />
       )}
@@ -120,10 +143,10 @@ export function Indexing() {
       <SseProgress
         events={events}
         stackNames={overview?.stack.map((s) => s.name) ?? []}
-        includeAi={!noProvider}
+        includeAi={!noProvider && !reviewEstimate}
       />
 
-      <div className="flex items-center justify-between pt-2">
+      {effectiveRunId && status === 'open' && <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={() => void handleCancel()}
@@ -141,7 +164,7 @@ export function Indexing() {
             {t('indexing.skipAi')}
           </button>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

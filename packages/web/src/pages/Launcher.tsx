@@ -8,10 +8,10 @@ import { t } from '@/i18n/t';
 import { cn } from '@/lib/cn';
 
 function relativeTime(ms: number | null): string {
-  if (!ms) return 'never';
+  if (!ms) return t('launcher.never');
   const diff = Math.max(0, Date.now() - ms);
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
+  if (mins < 1) return t('launcher.now');
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
@@ -51,8 +51,8 @@ export function Launcher() {
     try {
       const proj = await api.projects.open(trimmed);
       if (proj.status === 'never-indexed' || proj.status === 'stale') {
-        await api.index.start(proj.id, {});
-        navigate(`/p/${proj.id}/indexing`);
+        const { runId } = await api.index.start(proj.id, { ai: false });
+        navigate(`/p/${proj.id}/indexing`, { state: { runId, reviewEstimate: true } });
       } else if (proj.status === 'indexing') {
         navigate(`/p/${proj.id}/indexing`);
       } else {
@@ -60,9 +60,9 @@ export function Launcher() {
       }
     } catch (err) {
       if (err instanceof ApiError && err.code === 'PATH_NOT_FOUND') {
-        setErrorMsg("That folder doesn't exist.");
+        setErrorMsg(t('launcher.missing'));
       } else {
-        setErrorMsg(err instanceof Error ? err.message : 'Failed to open folder');
+        setErrorMsg(err instanceof Error ? err.message : t('launcher.failed'));
       }
     } finally {
       setOpening(false);
@@ -94,7 +94,7 @@ export function Launcher() {
             type="text"
             value={folderPath}
             onChange={(e) => setFolderPath(e.target.value)}
-            placeholder="/path/to/your/project or ~/code/app"
+            placeholder={t('launcher.example')}
             className="flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-mono text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
           />
           <button
@@ -102,7 +102,7 @@ export function Launcher() {
             disabled={opening || !folderPath.trim()}
             className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
-            {opening ? 'Opening…' : t('launcher.open')}
+            {opening ? t('launcher.opening') : t('launcher.open')}
           </button>
         </form>
         {errorMsg && (
@@ -120,7 +120,7 @@ export function Launcher() {
                     type="button"
                     onClick={() => setBrowsePath(browseData.parent!)}
                     className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--surface)] text-[var(--text)]"
-                    title="Parent directory"
+                    title={t('launcher.parent')}
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                   </button>
@@ -166,7 +166,7 @@ export function Launcher() {
               ))}
               {browseData.entries.length === 0 && (
                 <li className="px-3 py-4 text-xs text-[var(--text-muted)] text-center">
-                  No subdirectories
+                  {t('launcher.empty')}
                 </li>
               )}
             </ul>
@@ -184,13 +184,8 @@ export function Launcher() {
               <button
                 key={p.id}
                 type="button"
-                onClick={() =>
-                  navigate(
-                    p.status === 'indexing'
-                      ? `/p/${p.id}/indexing`
-                      : `/p/${p.id}/overview`,
-                  )
-                }
+                disabled={opening}
+                onClick={() => void openProjectPath(p.root)}
                 className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-[var(--surface-2)] transition-colors"
               >
                 <div className="min-w-0 flex-1">
