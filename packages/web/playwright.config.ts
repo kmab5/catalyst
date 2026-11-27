@@ -8,7 +8,8 @@ export default defineConfig({
   workers: 1,
   use: { baseURL, browserName: 'chromium', viewport: { width: 1440, height: 980 }, trace: 'retain-on-failure' },
   webServer: process.env.CATALYST_SMOKE_URL ? undefined : {
-    command: 'node scripts/browser-smoke-server.mjs',
+    command: (process.platform === 'win32' ? '"%CATALYST_TEST_NODE%"' : '"$CATALYST_TEST_NODE"') + ' scripts/browser-smoke-server.mjs',
+    env: { CATALYST_TEST_NODE: process.execPath },
     cwd: root, url: baseURL + '/api/health', timeout: 60_000, reuseExistingServer: false,
   },
 });
