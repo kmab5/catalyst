@@ -342,6 +342,10 @@ test('Ask streams tool activity, validates citations and tracks actual search qu
     answer: { markdown: 'Read [[file:lib/a.ts]] or unknown.', searched: ['billing'], citations: [ref] },
   });
   expect(validateCitations('[[dir:app/[id]]]', () => true).citations).toEqual(['dir:app/[id]']);
+  const catchAll='file:app/docs/[[...slug]]/page.tsx';
+  expect(validateCitations('[['+catchAll+']] then [[route:PAGE /[id]]]', id=>id===catchAll)).toEqual({
+    markdown:'[['+catchAll+']] then PAGE /[id]',citations:[catchAll]
+  });
 });
 test('Ask checks absence with synonyms and structural list', async () => {
   const search = (query: string): StreamPart => ({ type: 'tool-call', name: 'search', args: { query } });
