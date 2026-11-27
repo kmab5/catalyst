@@ -151,7 +151,10 @@ export const EstimateDTO = z.object({
 });
 export type EstimateDTO = z.infer<typeof EstimateDTO>;
 
+export const DiffImpactRequest = z.object({ base: z.string().min(1).optional(), narrative: z.boolean().default(true), lang: Lang.optional() });
+
 export const DiffImpactDTO = z.object({
+  unavailable: z.enum(['not-a-work-tree', 'git-not-installed']).optional(),
   base: z.string(), head: z.string(),
   changedFiles: z.array(z.object({ path: z.string(), status: z.enum(['added', 'modified', 'deleted', 'renamed']) })),
   changedNodes: z.array(NodeRef),
