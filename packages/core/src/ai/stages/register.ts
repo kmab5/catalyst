@@ -50,8 +50,9 @@ export async function runAiStages(options: {
       attempt: async (item, fn) => {
         signal?.throwIfAborted();
         try {
-          if (client.rejectedKey() || client.budgetExceeded()) {
+          if (client.failureReason() || client.budgetExceeded()) {
             partial = true;
+            failed++;
             return undefined;
           }
           return await fn();
@@ -65,11 +66,8 @@ export async function runAiStages(options: {
               ' ' +
               item +
               ': ' +
-              (client.rejectedKey()
-                ? 'Provider rejected the key'
-                : client.budgetExceeded()
-                  ? 'Budget exceeded'
-                  : 'Item could not be generated'),
+              (client.failureReason() ??
+                (client.budgetExceeded() ? 'Budget exceeded' : 'Item could not be generated')),
           );
           return undefined;
         } finally {

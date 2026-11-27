@@ -24,6 +24,8 @@ export class LLMClient {
   private reserved = 0;
   private exceeded = false;
   private authFailed = false;
+  private terminalError: string | null = null;
+  private stopProvider = new AbortController();
   private slowUntil = 0;
   private unsupportedSchemas = new Set<string>();
   private stats = { tokensIn: 0, tokensOut: 0, calls: 0, cacheHits: 0, costUsd: null as number | null };
@@ -53,11 +55,14 @@ export class LLMClient {
   rejectedKey() {
     return this.authFailed;
   }
+  failureReason() {
+    return this.terminalError;
+  }
   private async acquire(signal?: AbortSignal) {
     while (true) {
       signal?.throwIfAborted();
       this.options.signal?.throwIfAborted();
-      if (this.authFailed) throw new Error('Provider rejected the key');
+      if (this.terminalError) throw new Error(this.terminalError);
       if (
         this.active <
         (Date.now() < this.slowUntil ? Math.max(1, Math.floor(this.concurrency / 2)) : this.concurrency)
@@ -103,7 +108,9 @@ export class LLMClient {
     r: TextRequest,
     fn: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
-    const signals = [this.options.signal, r.signal].filter((s): s is AbortSignal => !!s);
+    const signals = [this.options.signal, r.signal, this.stopProvider.signal].filter(
+      (s): s is AbortSignal => !!s,
+    );
     const signal = AbortSignal.any(signals);
     await this.acquire(signal);
     let reserved = 0;
@@ -129,9 +136,18 @@ export class LLMClient {
             code?: string;
           };
           const status = e.statusCode ?? e.status;
-          if (status === 401 || status === 403) {
-            this.authFailed = true;
-            throw new Error('Provider rejected the key');
+          if (status === 401 || status === 403 || status === 402) {
+            this.authFailed = status !== 402;
+            // Provider error bodies may contain submitted source or credentials. Preserve the
+            // actionable billing diagnosis, and cancel queued work before another request is sent.
+            this.terminalError =
+              status === 402
+                ? this.provider.label +
+                  ' requires more credits for this request (HTTP 402). Add credit or select a funded provider in Settings.'
+                : 'Provider rejected the key';
+            const reason = new Error(this.terminalError);
+            this.stopProvider.abort(reason);
+            throw reason;
           }
           if (status === 429) this.slowUntil = Date.now() + 60000;
           const transient =
@@ -155,14 +171,17 @@ export class LLMClient {
       this.release();
     }
   }
-  async text(req: TextRequest) {
+  private async textResult(req: TextRequest) {
     const r = {
       ...req,
       maxOutputTokens: req.maxOutputTokens ?? 1500,
       prompt: redactSecrets(req.prompt),
       system: redactSecrets(req.system),
     };
-    return (await this.call(r, (signal) => this.provider.generateText({ ...r, signal }))).text;
+    return this.call(r, (signal) => this.provider.generateText({ ...r, signal }));
+  }
+  async text(req: TextRequest) {
+    return (await this.textResult(req)).text;
   }
   async object<T>(stage: string, request: ObjectRequest<T>): Promise<T> {
     this.options.signal?.throwIfAborted();
@@ -196,10 +215,21 @@ export class LLMClient {
     }
     let result: T | undefined;
     let invalid: unknown;
+    const tokens = { inputTokens: 0, outputTokens: 0 };
+    const record = (u: LLMUsage) => {
+      tokens.inputTokens += u.inputTokens;
+      tokens.outputTokens += u.outputTokens;
+    };
+    const fallbackText = async (req: TextRequest) => {
+      const response = await this.textResult(req);
+      record(response.usage);
+      return response.text;
+    };
     const schemaKey = this.provider.modelFor(r.tier) + '/' + r.schemaName;
     if (this.provider.supportsStructuredOutput && !this.unsupportedSchemas.has(schemaKey)) {
       try {
         const response = await this.call(r, (signal) => this.provider.generateObject({ ...r, signal }));
+        record(response.usage);
         invalid = response.object;
         result = parseOutput(response.object, r.schema);
       } catch (error) {
@@ -221,18 +251,21 @@ export class LLMClient {
           throw error;
         if (NoObjectGeneratedError.isInstance(error)) {
           invalid = error.text;
-          if (error.usage)
-            this.account(r.tier, {
+          if (error.usage) {
+            const usage = {
               inputTokens: error.usage.inputTokens ?? 0,
               outputTokens: error.usage.outputTokens ?? 0,
-            });
+            };
+            record(usage);
+            this.account(r.tier, usage);
+          }
         }
       }
     }
     if (result === undefined) {
       const schema = JSON.stringify(await asSchema(r.schema).jsonSchema);
       if (invalid === undefined)
-        invalid = await this.text({
+        invalid = await fallbackText({
           ...r,
           prompt: r.prompt + '\nReturn JSON matching this schema:\n' + schema,
         });
@@ -244,7 +277,7 @@ export class LLMClient {
           err instanceof ZodError
             ? err.issues.slice(0, 10).map((i) => [i.path, i.message])
             : 'Invalid JSON';
-        const fixed = await this.text({
+        const fixed = await fallbackText({
           ...r,
           tier: 'fast',
           prompt:
@@ -258,12 +291,14 @@ export class LLMClient {
       .prepare(
         'INSERT OR REPLACE INTO llm_cache(key,response,tokens_in,tokens_out,created_at) VALUES(?,?,?,?,?)',
       )
-      .run(key, JSON.stringify(result), null, null, Date.now());
+      .run(key, JSON.stringify(result), tokens.inputTokens, tokens.outputTokens, Date.now());
     return result;
   }
   async *stream(req: StreamRequest): AsyncIterable<StreamPart> {
     const signal = AbortSignal.any(
-      [this.options.signal, req.signal, AbortSignal.timeout(90000)].filter((s): s is AbortSignal => !!s),
+      [this.options.signal, req.signal, this.stopProvider.signal, AbortSignal.timeout(90000)].filter(
+        (s): s is AbortSignal => !!s,
+      ),
     );
     const messages = req.messages.map((m) => ({ ...m, content: redactSecrets(m.content) }));
     await this.acquire(signal);
