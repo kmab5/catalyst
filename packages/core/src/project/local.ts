@@ -48,7 +48,7 @@ export class LocalPathSource {
   constructor(readonly root:string){}
   private async safe(rel:string) {
     const path=await realpath(resolve(this.root,rel)), own=relative(this.root,path)
-    if (isAbsolute(rel)||own==='..'||own.startsWith('..'+sep)||isAbsolute(own)||secretPath(rel)||secretPath(own)) throw new CatalystError('BAD_REQUEST','Source path is unavailable')
+    if (isAbsolute(rel)||relative(path,resolve(this.root,rel))!==''||own==='..'||own.startsWith('..'+sep)||isAbsolute(own)||secretPath(rel)||secretPath(own)) throw new CatalystError('BAD_REQUEST','Source path is unavailable')
     return path
   }
   async readFile(rel:string){return readFile(await this.safe(rel),'utf8')}

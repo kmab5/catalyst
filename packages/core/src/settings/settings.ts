@@ -4,7 +4,7 @@ import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import { GlobalConfig, ProviderConfig, type ProvidersDetectDTO, type SettingsDTO, type SettingsUpdate } from '@catalyst/shared'
 import { readJson, writeJson } from '../project/local.js'
-import { createProvider } from '../ai/index.js'
+import { createProvider, DEFAULT_MODELS } from '../ai/index.js'
 
 function claudePath(env:NodeJS.ProcessEnv) {
   for(const dir of (env.PATH??env.Path??'').split(delimiter).filter(Boolean)) {
@@ -35,12 +35,7 @@ function fromEnv(env:NodeJS.ProcessEnv):ProviderConfig|null {
 }
 export function maskKey(key:string){return (key.length>8?key.slice(0,Math.min(6,key.length-4)):'')+'…'+(key.length>4?key.slice(-4):'')}
 function defaults(p:ProviderConfig|null){
-  switch(p?.type){
-    case 'openrouter':return {fast:'anthropic/claude-haiku-5.5',smart:'anthropic/claude-sonnet-5.5'}
-    case 'claude-code':return {fast:'haiku',smart:'sonnet'}
-    case 'openai-compatible':return {fast:'gpt-4o-mini',smart:'gpt-4o'}
-    default:return {fast:'claude-haiku-5-5',smart:'claude-sonnet-5-5'}
-  }
+  return {...DEFAULT_MODELS[p?.type??'anthropic']}
 }
 type Saved=Partial<GlobalConfig>
 export class SettingsStore{
@@ -66,7 +61,11 @@ export class SettingsStore{
     const old=this.resolved()
     if(update.provider!==undefined){
       const next=update.provider
-      saved.provider=next?ProviderConfig.parse({...((old.provider?.type===next.type)?old.provider:{}),...next}):null
+      if(next && 'apiKey' in next && next.apiKey===null){
+        saved.provider=next.type==='openai-compatible'?ProviderConfig.parse({...((old.provider?.type===next.type)?old.provider:{}),...next,apiKey:undefined}):null
+      }else{
+        saved.provider=next?ProviderConfig.parse({...((old.provider?.type===next.type)?old.provider:{}),...next}):null
+      }
       if(old.provider?.type!==next?.type) delete saved.models
     }
     if(update.models) saved.models={...saved.models??defaults(saved.provider??old.provider),...update.models}

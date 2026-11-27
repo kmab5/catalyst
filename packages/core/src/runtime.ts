@@ -12,6 +12,7 @@ import { openStore, type Store } from './store/index.js'
 import { LocalPathSource, ProjectRegistry, directory, ensureGitignore, expandHome, isProjectDir, projectId, readJson } from './project/local.js'
 import { SettingsStore } from './settings/settings.js'
 import { startIndexRun } from './jobs/index-run.js'
+import { writeFeatureCouplings } from './analyze/rules/cross-feature-coupling.js'
 import { createProvider, LLMClient, runAiStages, ask, estimate, diffNarrative, writeDeterministicFeatures } from './ai/index.js'
 
 function rebuildSearch(s:Store,result:AnalysisResult,lang:Lang){
@@ -88,7 +89,8 @@ export function createEngine(opts:EngineOptions={}):Engine{
           }else{
             writeDeterministicFeatures(store.db,lang);store.meta.set('ai_status','skipped')
           }
-          signal.throwIfAborted();report('fts',0,result.nodes.length);rebuildSearch(store,result,lang);report('fts',result.nodes.length,result.nodes.length)
+          signal.throwIfAborted();writeFeatureCouplings(store.db,config.health)
+          report('fts',0,result.nodes.length);rebuildSearch(store,result,lang);report('fts',result.nodes.length,result.nodes.length)
           store.meta.set('output_language',lang)
         },finished=>{
           active=null;store.meta.set('last_status',finished.status)

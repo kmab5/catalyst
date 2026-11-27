@@ -2,7 +2,7 @@ import type { EdgeKind, NodeDTO, FlagDTO, Provenance, NodeRef, Feature, Lang, Fi
 import type { Store } from '../store/index.js'
 import { CatalystError } from '../errors.js'
 
-export type Edge={src:string;dst:string;kind:EdgeKind;provenance:Provenance;confidence:number;filePath:string|null;line:number|null}
+export type Edge={src:string;dst:string;kind:EdgeKind;provenance:Provenance;confidence:number;filePath:string|null;line:number|null;data?:{typeOnly?:boolean;names?:string[]}}
 export function ref(n:NodeDTO):NodeRef {
   const {id,name,kind,filePath,startLine,provenance}=n
   return {id,name,kind,filePath,startLine,provenance}
@@ -13,7 +13,7 @@ export function catalog(store:Store) {
   for (const m of store.all<{id:string;metric:string;value:number}>('SELECT node_id id,metric,value FROM metrics')){
     const n=nodes.get(m.id);if(n)n.metrics[m.metric]=m.value
   }
-  const edges=store.all<Edge>('SELECT src,dst,kind,provenance,confidence,file_path filePath,line FROM edges ORDER BY src,dst,kind')
+  const edges=store.all<Omit<Edge,'data'>&{data:string|null}>('SELECT src,dst,kind,provenance,confidence,file_path filePath,line,data FROM edges ORDER BY src,dst,kind').map(e=>({...e,data:e.data?JSON.parse(e.data):undefined}))
   const incoming=new Map<string,Edge[]>(),outgoing=new Map<string,Edge[]>()
   for(const e of edges){
     if(!nodes.has(e.src)||!nodes.has(e.dst))continue

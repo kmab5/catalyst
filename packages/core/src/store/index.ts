@@ -2,10 +2,22 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { schema } from './schema.js'
+import { repositories } from './repos.js'
 import type { AnalysisResult } from '../analysis.js'
 import type { RunDTO } from '@catalyst/shared'
 
-export function openStore(path: string) {
+export interface Store extends ReturnType<typeof repositories> {
+  db: Database.Database
+  stmt(sql:string): Database.Statement
+  all<T>(sql:string,...params:unknown[]): T[]
+  one<T>(sql:string,...params:unknown[]): T|undefined
+  meta: {get(key:string):string|null;set(key:string,value:string):void}
+  saveRun(run:RunDTO):void
+  run(id:string):RunDTO|null
+  saveAnalysis(result:AnalysisResult):void
+  close():void
+}
+export function openStore(path: string): Store {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
@@ -54,7 +66,6 @@ export function openStore(path: string) {
       meta.set('parse_cache',JSON.stringify({files:result.files.map(({source,...rest})=>rest),parsed:result.parsed}))
     })()
   }
-  return {db,stmt,all,one,meta,saveRun,run,saveAnalysis,close:()=>db.close()}
+  return {db,stmt,all,one,meta,saveRun,run,saveAnalysis,...repositories({db,stmt,all,one,saveRun,run}),close:()=>db.close()}
 }
-export type Store = ReturnType<typeof openStore>
 

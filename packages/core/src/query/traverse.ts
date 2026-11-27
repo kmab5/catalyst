@@ -12,16 +12,25 @@ export function adjacent(c:Catalog,id:string,dir:Direction,kinds?:EdgeKind[]){
 }
 export function edgeRef(c:Catalog,id:string,e:Edge){return {kind:e.kind,provenance:e.provenance,confidence:e.confidence,filePath:e.filePath,line:e.line,node:ref(need(c,id))}}
 export function impact(c:Catalog,root:string,direction:Direction,depth:number,kinds?:EdgeKind[]):ImpactDTO{
-  need(c,root)
+  const rootNode=need(c,root)
   const result:ImpactDTO={root,direction,depth,nodes:[],edges:[],byFeature:[],routes:[],truncated:false}
   const seen=new Set([root]), counts=new Map<string,number>()
   const pending=[{id:root,distance:0}]
   for(let i=0;i<pending.length;i++){
     const current=pending[i]!
     if(current.distance>=depth)continue
-    for(const s of adjacent(c,current.id,direction,kinds)){
-      if((!kinds&&!structural(s.edge))||seen.has(s.id))continue
-      if(result.nodes.length>=500){result.truncated=true;continue}
+    const steps=adjacent(c,current.id,direction,kinds)
+    if(i===0&&direction!=='down'&&rootNode.kind==='symbol'&&rootNode.filePath&&(!kinds||kinds.includes('imports'))){
+      for(const e of c.incoming.get(ids.file(rootNode.filePath))??[]){
+        if(e.kind==='imports'&&e.data?.names?.some(name=>name===rootNode.name||name==='*'))steps.push({id:e.src,direction:'up',edge:e})
+      }
+    }
+    for(const s of steps){
+      const target=need(c,s.id)
+      const owner=s.direction==='up'&&s.edge.kind==='contains'&&target.kind==='file'&&need(c,current.id).kind==='symbol'
+      if(!kinds&&(!structural(s.edge)&&!owner||['depends_on','feature_depends'].includes(s.edge.kind)))continue
+      if(seen.has(s.id)||s.edge.data?.typeOnly||target.data?.isTest||target.filePath&&c.nodes.get(ids.file(target.filePath))?.data?.isTest)continue
+      if(result.nodes.length>=300){result.truncated=true;continue}
       const distance=current.distance+1,node=need(c,s.id)
       seen.add(s.id);pending.push({id:s.id,distance})
       result.nodes.push({...ref(node),distance,direction:s.direction});result.edges.push(edgeRef(c,s.id,s.edge))
