@@ -21,16 +21,21 @@ export function openStore(path: string): Store {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
-  const version = db.pragma('user_version', { simple: true });
-  if (version === 0) {
+  try {
     db.transaction(() => {
-      db.exec(schema.replace('PRAGMA journal_mode = WAL;', ''));
-      db.prepare('INSERT INTO meta VALUES (?, ?)').run('schema_version', '1');
-      db.pragma('user_version = 1');
-    })();
-  } else if (version !== 1) {
+      const version = db.pragma('user_version', { simple: true });
+      if (version === 0) {
+        db.exec(schema.replace('PRAGMA journal_mode = WAL;', ''));
+        db.prepare('INSERT INTO meta VALUES (?, ?)').run('schema_version', '1');
+        db.pragma('user_version = 1');
+      } else if (version !== 1) throw new Error('Unsupported Catalyst index schema');
+      db.exec(
+        'CREATE TABLE IF NOT EXISTS run_events (run_id TEXT NOT NULL, seq INTEGER NOT NULL, event TEXT NOT NULL, PRIMARY KEY (run_id,seq))',
+      );
+    }).immediate();
+  } catch (err) {
     db.close();
-    throw new Error('Unsupported Catalyst index schema');
+    throw err;
   }
   const cache = new Map<string, Database.Statement>();
   function stmt(sql: string) {

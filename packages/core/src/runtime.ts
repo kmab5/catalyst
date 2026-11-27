@@ -20,7 +20,7 @@ import {
   readJson,
 } from './project/local.js';
 import { SettingsStore } from './settings/settings.js';
-import { startIndexRun } from './jobs/index-run.js';
+import { activeOwner, storedRun, startIndexRun } from './jobs/index-run.js';
 import { writeFeatureCouplings } from './analyze/rules/cross-feature-coupling.js';
 import {
   createProvider,
@@ -119,7 +119,10 @@ export function createEngine(opts: EngineOptions = {}): Engine {
   const home = opts.homeDir ?? homedir(),
     settings = new SettingsStore(home, opts.env ?? process.env),
     registry = new ProjectRegistry(home);
-  const opened = new Map<string, { project: Project; store: Store }>();
+  const opened = new Map<
+    string,
+    { project: Project; store: Store; localRun: () => IndexRun | null }
+  >();
   let closed = false;
   function connect(root: string, lastOpenedAt: number): Project {
     if (closed) throw new CatalystError('BAD_REQUEST', 'Engine is closed');
@@ -149,13 +152,14 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     const runs = new Map<string, IndexRun>();
     function info(): ProjectDTO {
       const when = Number(store.meta.get('last_index_at')) || null,
-        lang = language();
+        lang = language(),
+        activeId = active?.id ?? activeOwner(store);
       return {
         id,
         name: basename(root),
         root,
         lastOpenedAt: registry.recent().find((r) => r.id === id)?.lastOpenedAt ?? lastOpenedAt,
-        status: active
+        status: activeId
           ? 'indexing'
           : store.meta.get('last_status') === 'error'
             ? 'error'
@@ -167,7 +171,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
         aiStatus: (store.meta.get('ai_status') ?? 'none') as ProjectDTO['aiStatus'],
         outputLanguage: lang,
         lastIndexedAt: when,
-        activeRunId: active?.id ?? null,
+        activeRunId: activeId,
         lastRunId: store.meta.get('last_run_id'),
         stats: when ? projectStats(store, lang) : null,
       };
@@ -198,9 +202,12 @@ export function createEngine(opts: EngineOptions = {}): Engine {
           throw new CatalystError('NOT_INDEXED', 'Index this project first');
         return query;
       },
-      activeRun: () => active,
+      activeRun: () => {
+        const id = activeOwner(store);
+        return active ?? (id ? (storedRun(store, id) ?? null) : null);
+      },
       getRun: (id) => store.run(id),
-      runById: (id) => runs.get(id),
+      runById: (id) => runs.get(id) ?? storedRun(store, id),
       index(request = {}) {
         if (active)
           throw new CatalystError('INDEX_RUNNING', 'This project is already indexing', {
@@ -299,7 +306,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
       diffNarrative: async (diff, lang = language()) =>
         provider() ? diffNarrative(client(), diff, lang) : null,
     };
-    opened.set(id, { store, project });
+    opened.set(id, { store, project, localRun: () => active });
     return project;
   }
   function get(id: string) {
@@ -320,7 +327,9 @@ export function createEngine(opts: EngineOptions = {}): Engine {
       },
       async open(path) {
         const root = directory(expandHome(path, home));
-        ensureGitignore(root);
+        if (ensureGitignore(root) === 'added') {
+          opts.logger?.info('Added .catalyst/ to .gitignore', { event: 'gitignore.updated', root });
+        }
         const p = connect(root, Date.now());
         registry.touch(root);
         return p;
@@ -361,8 +370,8 @@ export function createEngine(opts: EngineOptions = {}): Engine {
     },
     async close() {
       closed = true;
-      for (const { project, store } of opened.values()) {
-        const run = project.activeRun();
+      for (const { localRun, store } of opened.values()) {
+        const run = localRun();
         if (run) {
           run.cancel();
           await run.done;

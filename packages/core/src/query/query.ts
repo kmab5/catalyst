@@ -25,11 +25,12 @@ export function createQueryApi(
   source: LocalPathSource,
   project: () => ProjectDTO,
 ): QueryApi {
-  let cached: Catalog | undefined, revision = '';
+  let cached: Catalog | undefined,
+    revision = '';
   function c() {
     // total_changes is local to this connection. data_version also sees CLI/MCP writes.
     const changes = store.one<{ revision: string }>(
-      "SELECT total_changes() || ':' || data_version AS revision FROM pragma_data_version"
+      "SELECT total_changes() || ':' || data_version AS revision FROM pragma_data_version",
     )!.revision;
     if (!cached || changes !== revision) {
       cached = catalog(store);
@@ -73,7 +74,9 @@ export function createQueryApi(
           key = [...new Set(ids)].sort().join('\n');
         if (cycleKeys.has(key)) return [];
         cycleKeys.add(key);
-        const nodes = [...new Set(ids)].flatMap((id) => (data.nodes.has(id) ? [ref(need(data, id))] : []));
+        const nodes = [...new Set(ids)].flatMap((id) =>
+          data.nodes.has(id) ? [ref(need(data, id))] : [],
+        );
         return [{ id: f.id, nodes, size: nodes.length }];
       });
     return {
@@ -117,6 +120,15 @@ export function createQueryApi(
         };
       });
   }
+  function featuresOf(id: string, lang: Lang) {
+    const node = need(c(), id),
+      file = node.filePath ? ids.file(node.filePath) : null;
+    return features(store, lang).flatMap((f) => {
+      const member =
+        f.members.find((m) => m.nodeId === id) ?? f.members.find((m) => m.nodeId === file);
+      return member ? [{ id: f.id, name: f.name, role: member.role }] : [];
+    });
+  }
   const query: QueryApi = {
     getProject: project,
     getStack: () => JSON.parse(store.meta.get('stack_json') ?? '[]'),
@@ -155,19 +167,7 @@ export function createQueryApi(
       };
     },
     featuresOf(id) {
-      const node = need(c(), id);
-      const members = membersOf(node);
-      if (!members.size) return [];
-      return features(store, project().outputLanguage)
-        .filter((f) => members.has(f.id))
-        .map((f) => ({
-          id: f.id,
-          name: f.name,
-          role:
-            f.members.find(
-              (m) => m.nodeId === id || (node.filePath && m.nodeId === ids.file(node.filePath)),
-            )?.role ?? 'support',
-        }));
+      return featuresOf(id, project().outputLanguage);
     },
     getNode: (id) => need(c(), id),
     flagsFor: (id) => c().flags.filter((f) => f.node.id === id),
@@ -221,7 +221,7 @@ export function createQueryApi(
         node,
         summary: s,
         symbolPurpose: fileSummary?.symbols.find((s) => s.nodeId === id)?.purpose ?? null,
-        features: query.featuresOf(id),
+        features: featuresOf(id, lang),
         upstream,
         downstream,
         sideEffects,
@@ -236,6 +236,9 @@ export function createQueryApi(
     async getSource(id, range) {
       const n = query.getNode(id);
       if (!n.filePath) throw new CatalystError('BAD_REQUEST', 'This node has no source file');
+      const file = store.files.get(n.filePath);
+      if (file?.parseError === 'too_large' || file?.parseError === 'binary')
+        throw new CatalystError('BAD_REQUEST', 'This file exceeds the source preview limits');
       const lines = (await source.readFile(n.filePath)).split(/\r?\n/);
       const start = Math.min(lines.length, Math.max(1, range?.start ?? n.startLine ?? 1)),
         end = Math.min(
@@ -246,9 +249,7 @@ export function createQueryApi(
       return {
         nodeId: id,
         filePath: n.filePath,
-        language:
-          store.one<{ language: string }>('SELECT language FROM files WHERE path=?', n.filePath)
-            ?.language ?? 'unknown',
+        language: file?.language ?? 'unknown',
         startLine: start,
         endLine: end,
         totalLines: lines.length,

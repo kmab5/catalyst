@@ -29,6 +29,28 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe('index lifecycle and queries', () => {
+  it('lets a second engine follow an index and replay its completed events', async () => {
+    const other = createEngine({ homeDir: join(dir, 'other-home'), env: {} });
+    try {
+      const observer = await other.projects.open(root);
+      const run = project.index({ ai: false });
+      expect(observer.info().activeRunId).toBe(run.id);
+      expect(() => observer.index({ ai: false })).toThrowError(
+        expect.objectContaining({ code: 'INDEX_RUNNING' }),
+      );
+      const remote = observer.activeRun()!;
+      expect((await remote.done).status).toBe('done');
+      const stages = [];
+      for await (const { event } of observer.runById!(run.id)!.events(1)) stages.push(event.stage);
+      expect(stages.at(-1)).toBe('done');
+      expect(observer.query.find('getcu')[0]?.node.name).toBe('getCurrentUser');
+      const second = project.index({ ai: false });
+      await other.close();
+      expect((await second.done).status).toBe('done');
+    } finally {
+      await other.close();
+    }
+  });
   it('preserves progress history, source ranges, search and upstream routes after restart', async () => {
     expect(() => project.query).toThrowError(expect.objectContaining({ code: 'NOT_INDEXED' }));
     const run = project.index({ ai: false });

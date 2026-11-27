@@ -9,7 +9,7 @@ import {
   type SettingsDTO,
   type SettingsUpdate,
 } from '@catalyst/shared';
-import { readJson, writeJson } from '../project/local.js';
+import { readJson, updateLocalState, writeJson } from '../project/local.js';
 import { createProvider, DEFAULT_MODELS } from '../ai/index.js';
 
 function claudePath(env: NodeJS.ProcessEnv) {
@@ -132,6 +132,9 @@ export class SettingsStore {
     };
   }
   update(update: SettingsUpdate) {
+    return updateLocalState(this.file, () => this.applyUpdate(update));
+  }
+  private applyUpdate(update: SettingsUpdate) {
     const saved = readJson<Saved>(this.file, {});
     const old = this.resolved();
     if (update.provider !== undefined) {
