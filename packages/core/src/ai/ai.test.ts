@@ -21,7 +21,7 @@ import {
   validateCitations,
   writeDeterministicFeatures,
 } from './index.js';
-import { newFeature, postProcessFeatures } from './stages/features.js';
+import { discover, newFeature, postProcessFeatures } from './stages/features.js';
 import { parseOutput } from './json.js';
 import { Snapshot } from './context.js';
 import type { StreamPart } from './providers/types.js';
@@ -259,6 +259,28 @@ test('runs grounded stages leaves-first, caches unchanged runs, stores Turkish i
   expect(db.prepare('SELECT DISTINCT language FROM summaries').all()).toHaveLength(2);
   expect(EstimateDTO.parse(estimate(db, 'en', fake)).filesNeedingSummary).toBe(0);
 });
+test.each([true, false])('names graph fallback and numbered AI features from their members (fallback=%s)', async (fallback) => {
+  fixture();
+  const structural = writeDeterministicFeatures(db);
+  expect(structural.every((f) => !/^Group/i.test(f.name))).toBe(true);
+  const candidate = newFeature('Group 1', 'en');
+  candidate.members = [{ nodeId: 'file:lib/main.ts', role: 'core' }];
+  const fake = new FakeProvider({ objects: {
+    Features: () => ({ features: fallback ? [] : [candidate] }),
+    FeatureNames: (prompt) => {
+      const groups = JSON.parse(prompt) as { id: string; members: { nodeId: string }[] }[];
+      expect(groups[0]?.members.some((m) => m.nodeId.startsWith('file:lib/'))).toBe(true);
+      return { names: groups.map(({ id }) => ({ id, name: 'User lookup' })) };
+    },
+  } });
+  const result = await discover({ s: new Snapshot(db, 'en'), root, client: new LLMClient(fake, db),
+    attempt: async (_item, work) => work() });
+  const feature = result.find((f) => f.name === 'User lookup')!;
+  expect(feature).toBeDefined();
+  expect(db.prepare('SELECT name FROM nodes WHERE id=?').pluck().get(feature.id)).toBe(feature.name);
+  if (fallback) expect(feature.id).toBe(structural[0]?.id);
+});
+
 test('failures preserve structural fallback and mark stages degraded', async () => {
   fixture();
   const degraded: string[] = [];

@@ -131,6 +131,57 @@ export function postProcessFeatures(raw: unknown[], s: Snapshot): Feature[] {
   }
   return features;
 }
+// Keep the graph-derived ID stable when its display name changes.
+function representativePath(feature: Feature, s: Snapshot) {
+  const files = feature.members.filter((m) => m.nodeId.startsWith('file:'));
+  files.sort((a, b) => (s.metrics.get(b.nodeId)?.fan_in ?? 0) - (s.metrics.get(a.nodeId)?.fan_in ?? 0));
+  return files[0]?.nodeId.slice(5) ?? feature.entryPoints[0] ?? feature.members[0]?.nodeId ?? feature.id;
+}
+
+const namingInstruction =
+  ' Give each capability a distinct, concise name describing what the code does, grounded in its files, routes and summaries. Avoid numbered labels such as Group 1 or Feature 2.';
+const placeholder = /^(?:group|grup|cluster|community|feature|module|küme|özellik|modül)(?:\s*[#:_-]?\s*\d+\b|\s*$)/iu;
+
+async function nameFeatures(features: Feature[], graphFallback: boolean, { s, client, attempt }: StageContext) {
+  const used = new Set<string>();
+  const pending = features.filter((f) => {
+    const name = f.name.trim().toLocaleLowerCase(s.lang);
+    if (graphFallback || !name || placeholder.test(name) || used.has(name)) return true;
+    used.add(name);
+    return false;
+  });
+  let complete = true;
+  for (let i = 0; i < pending.length; i += 16) {
+    const batch = pending.slice(i, i + 16);
+    const evidence = batch.map((f) => ({
+      id: f.id,
+      entryPoints: f.entryPoints.slice(0, 4),
+      members: f.members.slice(0, 6).map(({ nodeId }) => ({
+        nodeId, purpose: s.summaries.get(nodeId)?.value.purpose.slice(0, 150),
+      })),
+    }));
+    const labels = await attempt('feature names ' + i, () =>
+      client.object('features', {
+        tier: 'fast', schemaName: 'FeatureNames',
+        schema: z.object({ names: z.array(z.object({ id: z.string(), name: z.string().trim().min(1).max(80) })) }),
+        system: preamble(s.lang) + namingInstruction + ' Return one name for every supplied ID, copying the ID exactly.',
+        prompt: JSON.stringify(evidence),
+      }),
+    );
+    for (const f of batch) {
+      const name = labels?.names.find((label) => label.id === f.id)?.name;
+      const key = name?.toLocaleLowerCase(s.lang);
+      if (name && key && !placeholder.test(name) && !used.has(key)) f.name = name;
+      else {
+        f.name = representativePath(f, s);
+        complete = false;
+      }
+      used.add(f.name.toLocaleLowerCase(s.lang));
+    }
+  }
+  return complete;
+}
+
 export function deterministicFeatures(s: Snapshot): Feature[] {
   const groups = new Map<string, Feature>();
   for (const row of s.files) {
@@ -148,7 +199,9 @@ export function deterministicFeatures(s: Snapshot): Feature[] {
         feature.members.push({ nodeId: n.id, role: 'entry' });
       }
   }
-  return postProcessFeatures([...groups.values()], s);
+  const features = postProcessFeatures([...groups.values()], s);
+  for (const f of features) f.name = representativePath(f, s);
+  return features;
 }
 export function saveFeatures(s: Snapshot, features: Feature[], inputHash: string) {
   const db = s.db;
@@ -172,7 +225,8 @@ export function saveFeatures(s: Snapshot, features: Feature[], inputHash: string
     }
   })();
 }
-export async function discover({ s, client, attempt }: StageContext) {
+export async function discover(context: StageContext) {
+  const { s, client, attempt } = context;
   const index = s.files.map((f) => {
     const id = ids.file(f.path),
       sum = s.summaries.get(id)?.value;
@@ -254,7 +308,7 @@ export async function discover({ s, client, attempt }: StageContext) {
           schemaName: 'Features',
           system:
             preamble(s.lang) +
-            ' Map user-facing and system capabilities. Explain flows from triggers to data and services. Copy exact member and step IDs.',
+            ' Map user-facing and system capabilities. Explain flows from triggers to data and services. Copy exact member and step IDs.' + namingInstruction,
           prompt: JSON.stringify({
             modules: JSON.stringify(modules).slice(0, 7000),
             anchors: JSON.stringify(anchors).slice(0, 11000),
@@ -313,7 +367,7 @@ export async function discover({ s, client, attempt }: StageContext) {
         tier: 'smart',
         schema,
         schemaName: 'FeaturesMerge',
-        system: preamble(s.lang) + ' Merge overlapping candidate capabilities by candidateId.',
+        system: preamble(s.lang) + ' Merge overlapping candidate capabilities by candidateId.' + namingInstruction,
         prompt: JSON.stringify(compact),
       }),
     );
@@ -335,6 +389,7 @@ export async function discover({ s, client, attempt }: StageContext) {
     else complete = false;
   }
   const features = output.length ? postProcessFeatures(output, s) : deterministicFeatures(s);
-  saveFeatures(s, features, complete && output.length ? inputHash : 'fallback');
+  const named = await nameFeatures(features, !output.length, context);
+  saveFeatures(s, features, complete && named && output.length ? inputHash : 'fallback');
   return features;
 }

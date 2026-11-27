@@ -10,7 +10,7 @@ export const DEFAULT_MODELS = {
 export const PROMPT_VERSION = {
   summarize: 1,
   rollup: 1,
-  features: 1,
+  features: 2,
   overview: 1,
   changeability: 1,
   ask: 1,
