@@ -23,11 +23,13 @@ From the checkout in PowerShell, try the bundled TypeScript fixture with Node 22
 ```powershell
 pnpm install --frozen-lockfile
 pnpm build
-node packages/cli/dist/index.js index fixtures/repos/ts-basic --no-ai --json
-node packages/cli/dist/index.js serve fixtures/repos/ts-basic
+$demo = Join-Path $env:TEMP ("catalyst-demo-" + [guid]::NewGuid())
+Copy-Item fixtures/repos/ts-basic $demo -Recurse
+node packages/cli/dist/index.js index $demo --no-ai --json
+node packages/cli/dist/index.js serve $demo
 ```
 
-The index result should contain `"status":"done"` and `"llmCalls":0`. Open the printed URL, find `lib/session.ts` in **Explorer**, then open **Health** to see the cycle between `lib/a.ts` and `lib/b.ts`. Press **Ctrl+C** in the terminal to stop the server. The fixture's index is stored under its ignored `.catalyst/` directory.
+The index result should contain `"status":"done"` and `"llmCalls":0`. Open the printed URL, find `lib/session.ts` in **Explorer**, then open **Health** to see the cycle between `lib/a.ts` and `lib/b.ts`. Press **Ctrl+C** in the terminal to stop the server. The index and any edits to the fixture's `.gitignore` live in the temporary copy.
 
 To run the automated checks after installing and building:
 
