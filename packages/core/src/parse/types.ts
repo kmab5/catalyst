@@ -71,7 +71,15 @@ export interface ParsedFile {
   directives: string[];
   exportedNames: string[];
   partial: boolean;
-  env: { callerSymbol: string; name: string; line: number }[];
+  env: { callerSymbol: string; name: string; line: number; receiver?: string }[];
+  pythonBindings: {
+    scope: string;
+    name: string;
+    typeName?: string;
+    pathLiteral?: string;
+    line: number;
+    parameter?: boolean;
+  }[];
 }
 export interface FileInput {
   path: string;
@@ -94,6 +102,7 @@ export function emptyParsedFile(path: string): ParsedFile {
     exportedNames: [],
     partial: false,
     env: [],
+    pythonBindings: [],
   };
 }
 export interface LanguageAdapter {

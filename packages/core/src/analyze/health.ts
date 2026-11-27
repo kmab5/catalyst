@@ -110,6 +110,25 @@ export function health(
     );
   }
   const exempt = new Set<string>();
+  const authAliases = new Set<string>(),
+    guardedHandlers = new Set<string>();
+  const injectedAuth =
+    /\bDepends\s*\(\s*[\w.]*(?:auth|current_user|current_active_superuser|require_user|verify_token)\w*/i;
+  for (const p of Object.values(parsed)) {
+    for (const s of p.symbols)
+      if (s.symbolKind === 'variable' && injectedAuth.test(s.signature))
+        authAliases.add(ids.sym(p.path, s.key));
+    for (const d of p.decorators)
+      if (injectedAuth.test(d.text)) guardedHandlers.add(ids.sym(p.path, d.target));
+  }
+  for (const p of Object.values(parsed))
+    for (const binding of p.pythonBindings) {
+      if (!binding.parameter || !binding.typeName) continue;
+      const type =
+        linked.bindings.get(p.path)?.get(binding.typeName)?.id ??
+        linked.local.get(p.path)?.get(binding.typeName);
+      if (type && authAliases.has(type)) guardedHandlers.add(ids.sym(p.path, binding.scope));
+    }
   const entryFiles = new Set<string>();
   function collectEntries(value: unknown, dir: string) {
     if (typeof value === 'string') entryFiles.add(posix.join(dir, value));
@@ -273,7 +292,8 @@ export function health(
           /(?:get|require|check|verify|ensure)(?:User|Session|Auth|Admin)|auth|current_user/i.test(
             node.name,
           ) ||
-          node.data?.category === 'auth'
+          node.data?.category === 'auth' ||
+          guardedHandlers.has(node.id)
         )
           auth = true;
         if (d >= 4) continue;

@@ -25,6 +25,38 @@ export function routes(
     }
     return path + '#' + root;
   };
+  // A router can mount at a Pydantic settings field whose default is a static path.
+  // Follow the imported instance and its class; never instantiate user code or load its environment.
+  function prefixArgument(file: ParsedFile, args: string[]) {
+    const expr = args
+      .find((arg) => /^(?:url_)?prefix\s*=/.test(arg))
+      ?.split('=')
+      .slice(1)
+      .join('=')
+      .trim();
+    if (!expr) return '';
+    const literal = expr.match(/^['"]([^'"]*)['"]$/);
+    if (literal) return literal[1]!;
+    const ref = expr.match(/^(\w+)(?:\.(\w+))?$/);
+    if (!ref) return '';
+    const locate = (path: string, name: string) => {
+      const binding = link.bindings.get(path)?.get(name);
+      if (binding?.kind !== 'symbol') return { path, name };
+      const node = model.nodes.get(binding.id);
+      return node?.filePath ? { path: node.filePath, name: node.name } : { path, name };
+    };
+    const instance = locate(file.path, ref[1]!);
+    const value = parsed[instance.path]?.pythonBindings.find(
+      (b) => b.scope === '<module>' && b.name === instance.name,
+    );
+    if (!ref[2]) return value?.pathLiteral ?? '';
+    if (!value?.typeName) return '';
+    const cls = locate(instance.path, value.typeName);
+    return (
+      parsed[cls.path]?.pythonBindings.find((b) => b.scope === cls.name && b.name === ref[2])?.pathLiteral ??
+      ''
+    );
+  }
   for (const p of Object.values(parsed)) {
     for (const c of p.calls) {
       const [owner, method] = c.calleeText.split('.');
@@ -35,10 +67,7 @@ export function routes(
       ) {
         const target = method === 'use' ? c.args.at(-1) : c.args[0];
         if (!target) continue;
-        const prefix =
-          method === 'use'
-            ? c.literal
-            : c.args.join(',').match(/(?:url_)?prefix\s*=\s*['"]([^'"]+)['"]/)?.[1];
+        const prefix = method === 'use' ? c.literal : prefixArgument(p, c.args);
         const key = context(p.path, target),
           list = mounts.get(key) ?? [];
         list.push({ parent: context(p.path, owner!), prefix: prefix ?? '' });
@@ -53,7 +82,7 @@ export function routes(
     for (const c of p.calls) {
       const name = vars.get(c.line);
       if (!name || !['APIRouter', 'Blueprint'].includes(c.calleeText)) continue;
-      const prefix = c.args.join(',').match(/(?:url_)?prefix\s*=\s*['"]([^'"]+)['"]/)?.[1];
+      const prefix = prefixArgument(p, c.args);
       if (prefix) routerPrefixes.set(context(p.path, name), prefix);
     }
   }
@@ -106,7 +135,14 @@ export function routes(
             const handler = handlers.get(local) ?? link.bindings.get(file.path)?.get(local)?.id;
             emit(method, path, handler, model.nodes.get(handler ?? '')?.startLine ?? 1);
           }
-        } else emit(app[2] === 'layout' ? 'LAYOUT' : 'PAGE', path, def, 1, { type: app[2] });
+        } else
+          emit(
+            app[2] === 'layout' ? 'LAYOUT' : 'PAGE',
+            path,
+            def,
+            model.nodes.get(def ?? '')?.startLine ?? 1,
+            { type: app[2] },
+          );
       }
     } else if (
       enabled['next-pages-router'] !== false &&
@@ -120,7 +156,7 @@ export function routes(
           .split('/')
           .filter((s, i, a) => s !== 'index' || i < a.length - 1)
           .join('/');
-      emit(path.startsWith('/api/') ? 'ANY' : 'PAGE', path, def, 1);
+      emit(path.startsWith('/api/') ? 'ANY' : 'PAGE', path, def, model.nodes.get(def ?? '')?.startLine ?? 1);
     } else if (
       enabled['next-middleware'] !== false &&
       dependencies.has('next') &&
