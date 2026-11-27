@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   useProvidersDetect,
   useSettings,
@@ -21,7 +22,10 @@ const MODEL_SUGGESTIONS: Record<ProviderType, { fast: string; smart: string }> =
 function isLocalhostUrl(url: string): boolean {
   try {
     const { protocol, hostname } = new URL(url);
-    return ['http:', 'https:'].includes(protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+    return (
+      ['http:', 'https:'].includes(protocol) &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
+    );
   } catch {
     return false;
   }
@@ -30,11 +34,14 @@ function isLocalhostUrl(url: string): boolean {
 export function Settings() {
   const { data: settings, isLoading, error, refetch } = useSettings();
   const { data: detected } = useProvidersDetect();
+  const origin: unknown = useLocation().state?.projectId;
+  const [changedLanguage, setChangedLanguage] = useState<Lang>();
   const updateMut = useUpdateSettings();
   const testMut = useTestProvider();
 
   const [providerType, setProviderType] = useState<ProviderType | 'none'>('openrouter');
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const keyInput = useRef<HTMLInputElement>(null);
   const [removeKey, setRemoveKey] = useState(false);
   const [baseUrl, setBaseUrl] = useState('https://openrouter.ai/api/v1');
   const [binary, setBinary] = useState('claude');
@@ -44,7 +51,8 @@ export function Settings() {
   const [budgetUsd, setBudgetUsd] = useState('');
   const [concurrency, setConcurrency] = useState(6);
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('catalyst.theme') : null;
+    const saved =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('catalyst.theme') : null;
     return saved === 'light' || saved === 'dark' ? saved : 'system';
   });
   const [providerDirty, setProviderDirty] = useState(false);
@@ -94,7 +102,11 @@ export function Settings() {
     if (providerType === 'claude-code') {
       return { type: 'claude-code', binary: binary || 'claude' };
     }
-    const key = removeKey ? { apiKey: null } : apiKeyInput.trim() ? { apiKey: apiKeyInput.trim() } : {};
+    const key = removeKey
+      ? { apiKey: null }
+      : apiKeyInput.trim()
+        ? { apiKey: apiKeyInput.trim() }
+        : {};
     if (providerType === 'openai-compatible') {
       return {
         type: 'openai-compatible',
@@ -131,12 +143,15 @@ export function Settings() {
       }
     }
 
-    updateMut.mutate(payload, { onSuccess: () => {
-      setApiKeyInput('');
-      setRemoveKey(false);
-      setProviderDirty(false);
-      setSavedNotice(true);
-    } });
+    updateMut.mutate(payload, {
+      onSuccess: () => {
+        setApiKeyInput('');
+        setRemoveKey(false);
+        setProviderDirty(false);
+        if (outputLanguage !== settings?.outputLanguage) setChangedLanguage(outputLanguage);
+        setSavedNotice(true);
+      },
+    });
   }
 
   const showKeyField =
@@ -144,18 +159,24 @@ export function Settings() {
     providerType === 'anthropic' ||
     providerType === 'openai-compatible';
 
-  const maskedKey = providerType === settings?.provider?.type ? settings?.provider?.apiKeyMasked : null;
+  const maskedKey =
+    providerType === settings?.provider?.type ? settings?.provider?.apiKeyMasked : null;
   const keyRequired = !maskedKey && (providerType === 'openrouter' || providerType === 'anthropic');
   const testingDraft = providerDirty || Boolean(apiKeyInput.trim());
   const testConfig = testingDraft ? ProviderConfig.safeParse(buildProviderConfig()) : undefined;
-  const canTestDraft = !testingDraft || (testConfig?.success && !removeKey &&
-    !(maskedKey && !apiKeyInput.trim() && providerType === 'openai-compatible'));
+  const canTestDraft =
+    !testingDraft ||
+    (testConfig?.success &&
+      !removeKey &&
+      !(maskedKey && !apiKeyInput.trim() && providerType === 'openai-compatible'));
   const providerOptions: { id: ProviderType; title: string; subtitle: string; badge?: string }[] = [
     ...(detected?.claudeCli.found
       ? [
           {
             id: 'claude-code' as const,
-            title: `Claude Code CLI (detected${detected.claudeCli.version ? ` v${detected.claudeCli.version}` : ''})`,
+            title: t('settings.claudeDetected', {
+              version: detected.claudeCli.version ? ' v' + detected.claudeCli.version : '',
+            }),
             subtitle: t('settings.claudePlan'),
           },
         ]
@@ -195,11 +216,18 @@ export function Settings() {
     <div data-testid="page-settings" className="mx-auto max-w-2xl px-6 py-8 space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
-          {t('settings.intro')}
-        </p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">{t('settings.intro')}</p>
       </header>
 
+      {changedLanguage && typeof origin === 'string' && settings?.provider && (
+        <Link
+          className="inline-block text-sm text-[var(--accent)] underline"
+          to={`/p/${encodeURIComponent(origin)}/indexing`}
+          state={{ reviewExisting: true, language: changedLanguage }}
+        >
+          {t('settings.regenerate', { language: changedLanguage === 'tr' ? 'Türkçe' : 'English' })}
+        </Link>
+      )}
       {updateMut.error && <ErrorCard error={updateMut.error} />}
       {testMut.error && <ErrorCard error={testMut.error} />}
       <form onChange={() => setSavedNotice(false)} onSubmit={handleSave} className="space-y-8">
@@ -285,7 +313,7 @@ export function Settings() {
                   </label>
                   {detected?.ollama.found && detected.ollama.models.length > 0 && (
                     <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Detected Ollama models: {detected.ollama.models.join(', ')}
+                      {t('settings.modelChoices', { models: detected.ollama.models.join(', ') })}
                     </p>
                   )}
                 </div>
@@ -298,32 +326,57 @@ export function Settings() {
                   </label>
                   {maskedKey && (
                     <span className="font-mono text-xs text-[var(--text-muted)]">
-                      Saved: {maskedKey}
-                      {settings?.provider?.apiKeySource === 'env' ? ' (from env)' : ''}
+                      {settings?.provider?.apiKeySource === 'env'
+                        ? t('settings.envKey', {
+                            variable:
+                              providerType === 'anthropic'
+                                ? 'ANTHROPIC_API_KEY'
+                                : providerType === 'openrouter'
+                                  ? 'OPENROUTER_API_KEY'
+                                  : 'OPENAI_API_KEY',
+                            masked: maskedKey,
+                          })
+                        : t('settings.masked', { masked: maskedKey })}
                     </span>
                   )}
                 </div>
                 <input
+                  ref={keyInput}
                   id="api-key-input"
                   aria-label={t('settings.apiKey')}
                   type="password"
                   required={keyRequired}
                   autoComplete="new-password"
                   value={apiKeyInput}
-                  onChange={(e) => { setApiKeyInput(e.target.value); setRemoveKey(false); }}
-                  placeholder={
-                    maskedKey
-                      ? t('settings.keep')
-                      : 'sk-...'
-                  }
+                  onChange={(e) => {
+                    setApiKeyInput(e.target.value);
+                    setRemoveKey(false);
+                  }}
+                  placeholder={maskedKey ? t('settings.keep') : 'sk-...'}
                   className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 font-mono text-xs"
                 />
                 {maskedKey && (
-                  <button type="button" className="mt-2 text-xs text-[var(--accent)]" onClick={() => {
-                    setRemoveKey(!removeKey);
-                    setApiKeyInput('');
-                    setProviderDirty(true);
-                  }}>{removeKey ? t('settings.undoRemove') : t('settings.removeKey')}</button>
+                  <div className="mt-2 flex gap-3 text-xs text-[var(--accent)]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRemoveKey(false);
+                        keyInput.current?.focus();
+                      }}
+                    >
+                      {t('settings.replace')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRemoveKey(!removeKey);
+                        setApiKeyInput('');
+                        setProviderDirty(true);
+                      }}
+                    >
+                      {removeKey ? t('settings.undoRemove') : t('settings.removeKey')}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -346,18 +399,25 @@ export function Settings() {
                 )}
               >
                 {testMut.data.ok
-                  ? `Connected · ${testMut.data.latencyMs} ms · ${testMut.data.model}`
-                  : testMut.data.message ?? t('settings.failed')}
+                  ? t('settings.connected', {
+                      ms: testMut.data.latencyMs,
+                      model: testMut.data.model,
+                    })
+                  : (testMut.data.message ?? t('settings.failed'))}
               </span>
             )}
           </div>
         </section>
 
         <datalist id="model-suggestions">
-          {[...new Set([
-            ...(providerType === 'none' ? [] : Object.values(MODEL_SUGGESTIONS[providerType])),
-            ...(providerType === 'openai-compatible' ? detected?.ollama.models ?? [] : []),
-          ])].map(model => <option key={model} value={model} />)}
+          {[
+            ...new Set([
+              ...(providerType === 'none' ? [] : Object.values(MODEL_SUGGESTIONS[providerType])),
+              ...(providerType === 'openai-compatible' ? (detected?.ollama.models ?? []) : []),
+            ]),
+          ].map((model) => (
+            <option key={model} value={model} />
+          ))}
         </datalist>
         <section className="grid sm:grid-cols-2 gap-4">
           <label className="block text-xs font-medium">
@@ -445,7 +505,15 @@ export function Settings() {
         </section>
 
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--text-muted)]">
-          {t('settings.privacy')}
+          {t('settings.privacy')}{' '}
+          <a
+            href="https://github.com/kmab5/catalyst/blob/main/plan/docs/12-config-and-privacy.md"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[var(--accent)] underline"
+          >
+            {t('settings.policy')}
+          </a>
         </div>
 
         <div className="flex items-center gap-3">

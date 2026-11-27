@@ -7,14 +7,16 @@ import { renderCitationsForTerminal } from './terminal-citations.js';
 test('non-TTY progress prints each stage once', () => {
   const stream = new PassThrough();
   const p = createProgressRenderer({ stream, isTTY: false });
-  for (const done of [0, 1, 2]) p.update({ runId: 'r', stage: 'parse', done, total: 2 });
+  for (const done of [0, 1, 2])
+    p.update({
+      runId: 'r',
+      stage: 'parse',
+      done,
+      total: 2,
+      message: done === 2 ? '1 parse error' : undefined,
+    });
   p.finish(sampleRunDTO);
-  expect(
-    stream
-      .read()
-      .toString()
-      .match(/\[catalyst\] parse/g),
-  ).toHaveLength(1);
+  expect(stream.read().toString()).toBe('[catalyst] parse 2/2 · 1 parse error\n');
 });
 test('route groups and dynamic route citations resolve to file:line', () => {
   const path = 'app/(demo)/[page]/page.tsx';

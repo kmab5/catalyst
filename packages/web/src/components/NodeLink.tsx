@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
   FileCode2,
@@ -43,8 +43,10 @@ export function NodeLink({
   className,
 }: NodeLinkProps) {
   const { pid } = useParams<{ pid: string }>();
+  const tooltipId = useId();
+  const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const { data: xray } = useNode(hovered ? pid : undefined, hovered ? node.id : undefined);
+  const { data: xray } = useNode(hovered || focused ? pid : undefined, node.id);
 
   const Icon = KIND_ICON[node.kind] ?? FileCode2;
   const href = pid
@@ -53,8 +55,7 @@ export function NodeLink({
       : `/p/${pid}/explorer?node=${encodeURIComponent(node.id)}${node.startLine ? `&line=${node.startLine}` : ''}`
     : '#';
 
-  const summaryText =
-    xray?.symbolPurpose ?? xray?.summary?.purpose ?? null;
+  const summaryText = xray?.symbolPurpose ?? xray?.summary?.purpose ?? null;
 
   return (
     <span
@@ -65,6 +66,9 @@ export function NodeLink({
       <Link
         to={href}
         onClick={onClick}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        aria-describedby={(hovered || focused) && xray ? tooltipId : undefined}
         className={cn(
           'inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 font-mono text-xs text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-colors',
           className,
@@ -73,9 +77,7 @@ export function NodeLink({
         <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
         <span className="truncate">{node.name}</span>
         {showKind && (
-          <span className="font-sans text-[10px] text-[var(--text-muted)]">
-            {node.kind}
-          </span>
+          <span className="font-sans text-[10px] text-[var(--text-muted)]">{node.kind}</span>
         )}
         {showPath && node.filePath && node.filePath !== node.name && (
           <span className="text-[11px] text-[var(--text-muted)] truncate">
@@ -85,14 +87,13 @@ export function NodeLink({
         )}
       </Link>
 
-      {hovered && xray && (
+      {(hovered || focused) && xray && (
         <div
+          id={tooltipId}
           role="tooltip"
           className="pointer-events-none absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 shadow-md text-left"
         >
-          <div className="font-mono text-xs font-medium text-[var(--text)] truncate">
-            {node.id}
-          </div>
+          <div className="font-mono text-xs font-medium text-[var(--text)] truncate">{node.id}</div>
           {summaryText && (
             <p className="mt-1 text-xs text-[var(--text-muted)] line-clamp-3 font-sans">
               {summaryText}

@@ -44,7 +44,7 @@ export function StatusPill({ project, progress, onReindex }: StatusPillProps) {
         type="button"
         onClick={onReindex}
         className="inline-flex items-center gap-1.5 rounded-full bg-[var(--sev-warn-soft)] px-2.5 py-1 text-xs font-medium text-[var(--sev-warn)] hover:opacity-90"
-        title="Code changed since last index — click to re-index"
+        title={t('status.reindex')}
       >
         <span className="h-2 w-2 rounded-full bg-[var(--sev-warn)]" />
         <span>{t('status.stale')}</span>

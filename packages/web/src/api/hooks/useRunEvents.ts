@@ -56,17 +56,28 @@ export function useRunEvents(pid: string | undefined, runId: string | null | und
         handlePayload(e.data);
       } else if (!closed && es.readyState === EventSource.CLOSED) {
         // A restarted engine retains the run record after the live stream expires.
-        void api.index.run(pid, runId).then(run => {
-          if (closed) return;
-          if (run.status === 'running') {
-            setStatus('error');
-            return;
-          }
-          handlePayload(JSON.stringify({
-            runId, done: 1, total: 1, ...run.lastEvent, stage: run.status,
-            message: run.error ?? run.lastEvent?.message,
-          }));
-        }).catch(() => { if (!closed) setStatus('error'); });
+        void api.index
+          .run(pid, runId)
+          .then((run) => {
+            if (closed) return;
+            if (run.status === 'running') {
+              setStatus('error');
+              return;
+            }
+            handlePayload(
+              JSON.stringify({
+                runId,
+                done: 1,
+                total: 1,
+                ...run.lastEvent,
+                stage: run.status,
+                message: run.error ?? run.lastEvent?.message,
+              }),
+            );
+          })
+          .catch(() => {
+            if (!closed) setStatus('error');
+          });
       }
     });
     es.onmessage = (e) => handlePayload(e.data);

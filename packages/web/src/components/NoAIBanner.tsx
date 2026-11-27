@@ -3,13 +3,6 @@ import { Sparkles } from 'lucide-react';
 import { t } from '@/i18n/t';
 import { cn } from '@/lib/cn';
 
-const CONTEXT_NOTE: Record<'overview' | 'features' | 'ask' | 'xray', string> = {
-  overview: 'Showing detected stack, entry points, and health structure.',
-  features: 'Showing structural groupings. Connect an AI provider to name features and trace flows.',
-  ask: 'Ask requires an AI provider. You can still use Find and Search (⌘K).',
-  xray: 'Showing static callers, callees, side effects, and health flags.',
-};
-
 export function NoAIBanner({
   context,
   className,
@@ -29,9 +22,7 @@ export function NoAIBanner({
         <Sparkles className="h-4 w-4 mt-0.5 text-[var(--text-muted)] shrink-0" />
         <div>
           <p className="font-medium text-[var(--text)]">{t('banner.noAi')}</p>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            {CONTEXT_NOTE[context]}
-          </p>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">{t(`noAi.${context}`)}</p>
         </div>
       </div>
       <Link

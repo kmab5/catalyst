@@ -126,6 +126,7 @@ export function TopBar({
         {statusSlot}
         <Link
           to="/settings"
+          state={project ? { projectId: project.id } : undefined}
           aria-label={t('nav.settings')}
           className="rounded p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-2)]"
         >

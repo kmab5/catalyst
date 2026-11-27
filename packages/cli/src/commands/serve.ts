@@ -1,7 +1,7 @@
 import type { Engine } from '@catalyst/core';
 import { isIP } from 'node:net';
 import { directory, openProject, projectAncestor, type CliDeps } from '../context.js';
-import { EXIT } from '../exit-codes.js';
+import { CliError, EXIT } from '../exit-codes.js';
 import { launchUrl } from '../urls.js';
 import { printProjectHeader } from '../progress.js';
 import { indexOptions, observeRun, type IndexOptions } from './index-cmd.js';
@@ -19,6 +19,9 @@ export async function serveCommand(
   path: string | undefined,
   options: ServeOptions,
 ) {
+  const port = options.port ?? Number(deps.env.CATALYST_PORT ?? 4321);
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    throw new CliError(EXIT.BAD_ARGS, 'CATALYST_PORT must be a port between 1 and 65535.');
   const root = directory(deps.cwd, path);
   const project =
     mode !== 'ui' && engine.isProjectDir(root) ? await openProject(engine, deps, root) : null;
@@ -36,7 +39,7 @@ export async function serveCommand(
   }
   const server = await deps.startServer(engine, {
     host,
-    port: options.port,
+    port,
     staticDir: deps.staticDir,
   });
   try {

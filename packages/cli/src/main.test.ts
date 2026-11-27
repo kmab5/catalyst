@@ -9,6 +9,29 @@ beforeEach(() => {
   f = fakeCli();
 });
 afterEach(() => f.cleanup());
+test('uses CATALYST_PORT unless a command-line port is supplied', async () => {
+  f.deps.env.CATALYST_PORT = '4545';
+  expect(await run(f.deps, ['ui'])).toBe(0);
+  expect(f.deps.startServer).toHaveBeenCalledWith(
+    f.engine,
+    expect.objectContaining({ port: 4545 }),
+  );
+  f.deps.env.CATALYST_PORT = 'invalid';
+  expect(await run(f.deps, ['serve', '--port', '4546'])).toBe(0);
+  expect(f.deps.startServer).toHaveBeenLastCalledWith(
+    f.engine,
+    expect.objectContaining({ port: 4546 }),
+  );
+});
+test.each(['port', '-3', '1.2', '65536', ''])(
+  'rejects invalid CATALYST_PORT %j before opening a project',
+  async (raw) => {
+    f.deps.env.CATALYST_PORT = raw;
+    expect(await run(f.deps, [f.root])).toBe(2);
+    expect(f.engine.projects.open).not.toHaveBeenCalled();
+    expect(f.deps.startServer).not.toHaveBeenCalled();
+  },
+);
 test('non-project cwd opens launcher and prints the actual port without launch secrets', async () => {
   expect(await run(f.deps, [])).toBe(0);
   expect(f.openBrowser).toHaveBeenCalledWith('http://127.0.0.1:4322/');
@@ -92,7 +115,7 @@ test('ask renders negative evidence', async () => {
 });
 test('MCP keeps stdout reserved for frames', async () => {
   expect(await run(f.deps, ['mcp', f.root])).toBe(0);
-  expect(f.startMcp).toHaveBeenCalledWith(f.engine, f.root);
+  expect(f.startMcp).toHaveBeenCalledWith(f.engine, f.root, f.deps.signal);
   expect(f.stdout.text.length).toBe(0);
 });
 test('health prints a closed cycle and supports CI exit codes', async () => {
