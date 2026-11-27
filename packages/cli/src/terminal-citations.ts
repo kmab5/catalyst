@@ -6,7 +6,7 @@ export function location(ref: NodeRef): string {
 
 export function renderCitationsForTerminal(markdown: string, citations: NodeRef[]): string {
   const refs = new Map(citations.map((node) => [node.id, node]));
-  const text = markdown.replace(/\[\[(.+?)\]\](?!\])/g, (_, id: string) => {
+  const text = markdown.replace(/\[\[((?:dir|file|sym|route|db|env|pkg|svc|feature):(?:[^\[\]\n]|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\])+)\]\]/g, (_, id: string) => {
     const node = refs.get(id);
     return node ? location(node) : id;
   });

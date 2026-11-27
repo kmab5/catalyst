@@ -18,8 +18,7 @@ test('non-TTY progress prints each stage once', () => {
   p.finish(sampleRunDTO);
   expect(stream.read().toString()).toBe('[catalyst] parse 2/2 · 1 parse error\n');
 });
-test('route groups and dynamic route citations resolve to file:line', () => {
-  const path = 'app/(demo)/[page]/page.tsx';
+test.each(['app/(demo)/[page]/page.tsx', 'app/docs/[[...slug]]/page.tsx'])('route citations in %s resolve to file:line', (path) => {
   const ref = { ...sampleNodeRef, id: ids.sym(path, 'Page'), filePath: path, startLine: 12 };
   const rendered = renderCitationsForTerminal('See [[' + ref.id + ']].', [ref]);
   expect(rendered).toContain('See ' + path + ':12.');
