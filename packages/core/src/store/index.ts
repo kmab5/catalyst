@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { schema } from './schema.js';
 import { repositories } from './repos.js';
 import type { AnalysisResult } from '../analysis.js';
-import type { RunDTO } from '@catalyst/shared';
+import { ids, type RunDTO } from '@catalyst/shared';
 
 export interface Store extends ReturnType<typeof repositories> {
   db: Database.Database;
@@ -89,6 +89,17 @@ export function openStore(path: string): Store {
   }
   function saveAnalysis(result: AnalysisResult) {
     db.transaction(() => {
+      const previous = new Map(
+        all<{ path: string; hash: string }>('SELECT path,hash FROM files').map((f) => [
+          f.path,
+          f.hash,
+        ]),
+      );
+      for (const f of result.files) {
+        if (previous.has(f.path) && previous.get(f.path) !== f.hash) {
+          stmt('DELETE FROM summaries WHERE node_id=?').run(ids.file(f.path));
+        }
+      }
       db.exec(
         "DELETE FROM files; DELETE FROM nodes WHERE kind <> 'feature'; DELETE FROM edges WHERE kind NOT IN ('feature_depends','member_of'); DELETE FROM flags; DELETE FROM metrics",
       );

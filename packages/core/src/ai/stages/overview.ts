@@ -16,13 +16,19 @@ export function gapSignals(s: Snapshot) {
     signals.push('no-auth-on-mutating-routes');
   if (!nodes.some((n) => n.kind === 'service' && /sentry|bugsnag|rollbar|honeybadger/i.test(n.id)))
     signals.push('no-error-tracking');
-  if (!s.db.prepare("SELECT 1 FROM files WHERE path='.env.example' OR path LIKE '%/.env.example'").get())
+  if (
+    !s.db
+      .prepare("SELECT 1 FROM files WHERE path='.env.example' OR path LIKE '%/.env.example'")
+      .get()
+  )
     signals.push('no-env-example');
   return signals;
 }
 export async function overview(features: Feature[], { s, client, attempt }: StageContext) {
-  const stackJson = rows<{ value: string }>(s.db, "SELECT value FROM meta WHERE key='stack_json'")[0]
-    ?.value;
+  const stackJson = rows<{ value: string }>(
+    s.db,
+    "SELECT value FROM meta WHERE key='stack_json'",
+  )[0]?.value;
   const stack = AppOverview.shape.stack.catch([]).parse(stackJson ? JSON.parse(stackJson) : []);
   const routes = [...s.nodes.values()].filter((n) => n.kind === 'route').map((n) => n.id);
   const gaps = gapSignals(s);
@@ -39,7 +45,8 @@ export async function overview(features: Feature[], { s, client, attempt }: Stag
       .filter((r) => !('role' in r.value))
       .sort(
         (a, b) =>
-          b.value.nodeId.length - a.value.nodeId.length || a.value.nodeId.localeCompare(b.value.nodeId),
+          b.value.nodeId.length - a.value.nodeId.length ||
+          a.value.nodeId.localeCompare(b.value.nodeId),
       )
       .slice(-8)
       .map((r) => r.value.purpose),
@@ -48,6 +55,11 @@ export async function overview(features: Feature[], { s, client, attempt }: Stag
     gaps,
     flags: rows(s.db, 'SELECT severity,COUNT(*) AS count FROM flags GROUP BY severity'),
   };
+  const inputHash = hash(input, client.provider.modelFor('smart'), s.lang);
+  const cached = s.db.prepare('SELECT input_hash FROM overview WHERE language=?').get(s.lang) as
+    | { input_hash: string }
+    | undefined;
+  if (cached?.input_hash === inputHash) return;
   const result = await attempt('overview', () =>
     client.object('overview', {
       tier: 'smart',
@@ -59,7 +71,10 @@ export async function overview(features: Feature[], { s, client, attempt }: Stag
       prompt: JSON.stringify(input),
     }),
   );
-  if (!result) return;
+  if (!result) {
+    s.db.prepare('DELETE FROM overview WHERE language=?').run(s.lang);
+    return;
+  }
   const featureIds = new Set(features.map((f) => f.id)),
     routeIds = new Set(routes);
   const value = cleanStrings(
@@ -74,10 +89,5 @@ export async function overview(features: Feature[], { s, client, attempt }: Stag
   );
   s.db
     .prepare('INSERT OR REPLACE INTO overview VALUES(?,?,?,?)')
-    .run(
-      s.lang,
-      JSON.stringify(value),
-      hash(input, client.provider.modelFor('smart'), s.lang),
-      Date.now(),
-    );
+    .run(s.lang, JSON.stringify(value), inputHash, Date.now());
 }
