@@ -90,6 +90,52 @@ test('invalid repair is not cached', async () => {
   expect(fake.calls).toHaveLength(2);
   expect(db.prepare('SELECT * FROM llm_cache').all()).toHaveLength(0);
 });
+
+test.each([401, 402, 403])(
+  'terminal HTTP %i stops queued paid calls and exposes actionable diagnostics',
+  async (status) => {
+    const provider = new FakeProvider();
+    let calls = 0;
+    provider.generateObject = async () => {
+      calls++;
+      await delay(5);
+      throw Object.assign(new Error('private response body'), { statusCode: status });
+    };
+    const client = new LLMClient(provider, db, { concurrency: 1 });
+    const results = await Promise.allSettled(
+      ['a', 'b', 'c'].map((prompt) => client.object('summarize', { ...req, prompt })),
+    );
+    expect(calls).toBe(1);
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    expect(client.failureReason()).toMatch(status === 402 ? /credits.*402/ : /rejected the key/);
+    expect(client.failureReason()).not.toContain('private response');
+    fixture();
+    const outcome = await runAiStages({
+      db,
+      root,
+      client: new LLMClient(provider, db, { concurrency: 1 }),
+      lang: 'en',
+    });
+    expect(outcome.aiStatus).toBe('partial');
+    expect(outcome.errors[0]).toContain(client.failureReason());
+    expect(calls).toBe(2);
+    const funded = new LLMClient(new FakeProvider({ objects: { N: [{ n: 1 }] } }), db);
+    expect(await funded.object('summarize', req)).toEqual({ n: 1 });
+  },
+);
+
+test('rejecting native structured output switches that schema to validated JSON text', async () => {
+  const provider = new FakeProvider({ texts: ['{"n":1}', '{"n":2}'] });
+  let native = 0;
+  provider.generateObject = async () => {
+    native++;
+    throw Object.assign(new Error('Invalid response_format schema'), { statusCode: 400 });
+  };
+  const client = new LLMClient(provider, db);
+  expect(await client.object('summarize', req)).toEqual({ n: 1 });
+  expect(await client.object('summarize', { ...req, prompt: 'another file' })).toEqual({ n: 2 });
+  expect(native).toBe(1);
+});
 test('budget and cancellation stop outbound calls', async () => {
   const p = new FakeProvider({ objects: { N: [{ n: 1 }] } });
   const client = new LLMClient(p, db, { budgetUsd: 0.00001 });
