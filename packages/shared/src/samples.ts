@@ -77,6 +77,7 @@ export const sampleSettingsDTO: Contract.SettingsDTO = { provider: { type: 'clau
   models, outputLanguage: 'en', budgetUsd: null, concurrency: 6, telemetry: false };
 export const sampleSettingsUpdate: Contract.SettingsUpdate = { models: { smart: 'sonnet' }, concurrency: 4 };
 export const sampleEstimateDTO: Contract.EstimateDTO = { files: 12, filesNeedingSummary: 7, cachedSummaries: 5, llmCalls: 9, tokens, costUsd: null, model: models, note: 'Billed to your Claude plan' };
+export const sampleDiffImpactRequest: Contract.DiffImpactRequest = { narrative: true };
 export const sampleDiffImpactDTO: Contract.DiffImpactDTO = { base: 'HEAD', head: 'WORKTREE', changedFiles: [{ path, status: 'modified' }], changedNodes: [sampleNodeRef],
   affected: { nodes: [], features: [{ featureId: billing, name: 'Billing', changed: 1, affected: 0 }], routes: [] }, flagsTouched: [sampleFlagDTO], narrative: null };
 export const sampleErrorCode: Contract.ErrorCode = 'NODE_NOT_FOUND';

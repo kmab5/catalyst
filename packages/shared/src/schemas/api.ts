@@ -152,6 +152,7 @@ export const EstimateDTO = z.object({
 export type EstimateDTO = z.infer<typeof EstimateDTO>;
 
 export const DiffImpactRequest = z.object({ base: z.string().min(1).optional(), narrative: z.boolean().default(true), lang: Lang.optional() });
+export type DiffImpactRequest = z.infer<typeof DiffImpactRequest>;
 
 export const DiffImpactDTO = z.object({
   unavailable: z.enum(['not-a-work-tree', 'git-not-installed']).optional(),
