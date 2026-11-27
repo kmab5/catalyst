@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Folder, ArrowLeft, ArrowRight, FolderGit2 } from 'lucide-react';
 import { api } from '@/api/client';
@@ -33,6 +33,8 @@ export function Launcher() {
 
   const [folderPath, setFolderPath] = useState(suggest);
   const [browsePath, setBrowsePath] = useState<string | undefined>(undefined);
+  const browseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(browseTimer.current), []);
   const [opening, setOpening] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -80,16 +82,16 @@ export function Launcher() {
     <div data-testid="page-launcher" className="mx-auto max-w-2xl px-6 py-12 space-y-10">
       <header className="space-y-1.5">
         <div className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <span className="text-[var(--accent)]" aria-hidden="true">◆</span>
+          <span className="text-[var(--accent)]" aria-hidden="true">
+            ◆
+          </span>
           <span>{t('app.name')}</span>
         </div>
         <p className="text-base text-[var(--text-muted)]">{t('app.tagline')}</p>
       </header>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-[var(--text)]">
-          {t('launcher.openFolder')}
-        </h2>
+        <h2 className="text-sm font-medium text-[var(--text)]">{t('launcher.openFolder')}</h2>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input
             aria-label={t('launcher.folderLabel')}
@@ -136,11 +138,19 @@ export function Launcher() {
                 <li key={entry.path}>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(event) => {
+                      clearTimeout(browseTimer.current);
                       setFolderPath(entry.path);
-                      setBrowsePath(entry.path);
+                      if (event.detail === 0) setBrowsePath(entry.path);
+                      else if (event.detail === 1) {
+                        // Keep the row mounted until a potential second click opens it.
+                        browseTimer.current = setTimeout(() => setBrowsePath(entry.path), 500);
+                      }
                     }}
-                    onDoubleClick={() => void openProjectPath(entry.path)}
+                    onDoubleClick={() => {
+                      clearTimeout(browseTimer.current);
+                      void openProjectPath(entry.path);
+                    }}
                     className="w-full flex items-center justify-between px-3 py-2 text-left text-sm hover:bg-[var(--surface-2)] transition-colors"
                   >
                     <span className="flex items-center gap-2 min-w-0">
@@ -178,9 +188,7 @@ export function Launcher() {
 
       {projects.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-[var(--text)]">
-            {t('launcher.recent')}
-          </h2>
+          <h2 className="text-sm font-medium text-[var(--text)]">{t('launcher.recent')}</h2>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] divide-y divide-[var(--border)]">
             {projects.map((p) => (
               <button
@@ -201,9 +209,7 @@ export function Launcher() {
                     <span className="font-medium text-sm text-[var(--text)] truncate">
                       {p.name}
                     </span>
-                    <span className="text-xs text-[var(--text-muted)]">
-                      {p.status}
-                    </span>
+                    <span className="text-xs text-[var(--text-muted)]">{p.status}</span>
                   </div>
                   <div className="mt-0.5 font-mono text-xs text-[var(--text-muted)] truncate">
                     {p.root}

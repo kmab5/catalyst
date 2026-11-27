@@ -46,13 +46,7 @@ export function Markdown({
           ['citation-chip' as string]: (props: { 'data-id'?: string }) => {
             const id = props['data-id'] ?? '';
             if (resolveCitations && !byId.has(id)) return <ResolvedCitation id={id} />;
-            return (
-              <CitationChip
-                id={id}
-                nodeRef={byId.get(id)}
-                onSelect={onSelectCitation}
-              />
-            );
+            return <CitationChip id={id} nodeRef={byId.get(id)} onSelect={onSelectCitation} />;
           },
         }}
       >

@@ -30,9 +30,7 @@ export function Overview() {
 
   const { overview, stack, features, entryPoints, health, project } = data;
   const visibleFeatures = [...features].sort((a, b) => {
-    if (a.id === ids.feature('shared')) return 1;
-    if (b.id === ids.feature('shared')) return -1;
-    return 0;
+    return Number(a.id === ids.feature('shared')) - Number(b.id === ids.feature('shared'));
   });
 
   const evidenceRefs = entryPoints;
@@ -53,7 +51,10 @@ export function Overview() {
             </div>
           </>
         ) : (
-          <><h1 className="text-3xl font-semibold">{project.name}</h1><NoAIBanner context="overview" /></>
+          <>
+            <h1 className="text-3xl font-semibold">{project.name}</h1>
+            <NoAIBanner context="overview" />
+          </>
         )}
       </header>
 
@@ -73,9 +74,7 @@ export function Overview() {
                     className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:border-[var(--text-muted)]"
                   >
                     <span>{item.name}</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">
-                      {item.category}
-                    </span>
+                    <span className="text-[10px] text-[var(--text-muted)]">{item.category}</span>
                   </button>
                   {isOpen && item.evidence.length > 0 && (
                     <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5 shadow-md space-y-1">
@@ -121,16 +120,14 @@ export function Overview() {
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <FeatureDot colorIndex={f.colorIndex} className="mt-1.5" />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-[var(--text)]">
-                      {f.name}
-                    </div>
+                    <div className="text-sm font-medium text-[var(--text)]">{f.name}</div>
                     <div className="text-xs text-[var(--text-muted)] truncate max-w-xl">
                       {f.summary}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-[var(--text-muted)] shrink-0">
-                  <span>{f.memberCount} items</span>
+                  <span>{t('overview.members', { count: f.memberCount })}</span>
                   {f.changeabilityRating && (
                     <span className="rounded bg-[var(--surface-2)] px-2 py-0.5 capitalize">
                       {f.changeabilityRating}
@@ -172,10 +169,7 @@ export function Overview() {
           </h2>
           <ul className="space-y-1.5">
             {overview.gaps.map((gap) => (
-              <li
-                key={gap}
-                className="flex items-center gap-2 text-sm text-[var(--text-muted)]"
-              >
+              <li key={gap} className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
                 <AlertTriangle className="h-3.5 w-3.5 text-[var(--sev-warn)] shrink-0" />
                 <Markdown text={gap} citations={evidenceRefs} resolveCitations />
               </li>
@@ -198,7 +192,7 @@ export function Overview() {
           </Link>
         </div>
         <p className="text-sm text-[var(--text)]">
-          {health.high} high · {health.warn} warnings · {health.info} notes
+          {t('overview.healthCounts', { high: health.high, warn: health.warn, info: health.info })}
         </p>
         {health.topFlags.length > 0 && (
           <ul className="space-y-1.5">

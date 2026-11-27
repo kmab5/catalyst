@@ -9,7 +9,10 @@ export function getToken(): string | null {
     url.searchParams.delete('token');
     window.history.replaceState(window.history.state, '', url);
   }
-  const meta = document.querySelector('meta[name="catalyst-token"]')?.getAttribute('content')?.trim();
+  const meta = document
+    .querySelector('meta[name="catalyst-token"]')
+    ?.getAttribute('content')
+    ?.trim();
   const token = meta && meta !== '__CATALYST_TOKEN__' ? meta : param;
   try {
     if (token) window.sessionStorage.setItem(STORAGE_KEY, token);
@@ -22,10 +25,16 @@ export function getToken(): string | null {
 let refreshing: Promise<string | null> | undefined;
 
 async function readLaunchToken(): Promise<string | null> {
-  const page = await fetch('/', { cache: 'no-store', redirect: 'error', headers: { Accept: 'text/html' } });
+  const page = await fetch('/', {
+    cache: 'no-store',
+    redirect: 'error',
+    headers: { Accept: 'text/html' },
+  });
   if (!page.ok || !page.headers.get('Content-Type')?.includes('text/html')) return null;
-  const fresh = new DOMParser().parseFromString(await page.text(), 'text/html')
-    .querySelector('meta[name="catalyst-token"]')?.getAttribute('content');
+  const fresh = new DOMParser()
+    .parseFromString(await page.text(), 'text/html')
+    .querySelector('meta[name="catalyst-token"]')
+    ?.getAttribute('content');
   if (!fresh) return null;
   let meta = document.querySelector<HTMLMetaElement>('meta[name="catalyst-token"]');
   if (!meta) {
@@ -46,7 +55,9 @@ export async function fetchWithToken(path: string, init: RequestInit): Promise<R
   if (response.status !== 401 || init.signal?.aborted) return response;
   let token = getToken();
   if (token === original) {
-    refreshing ??= readLaunchToken().finally(() => { refreshing = undefined; });
+    refreshing ??= readLaunchToken().finally(() => {
+      refreshing = undefined;
+    });
     token = await refreshing;
   }
   if (!token || token === original || init.signal?.aborted) return response;

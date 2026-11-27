@@ -2,22 +2,40 @@ import { Check, Loader2, Circle, AlertCircle } from 'lucide-react';
 import type { ProgressEvent } from '@/api/contract';
 import { cn } from '@/lib/cn';
 
+import { t } from '@/i18n/t';
+import type { I18nKey } from '@/i18n/en';
+
 interface StageGroup {
   key: string;
-  label: string;
+  label: I18nKey;
   tooltip: string;
   stages: ProgressEvent['stage'][];
 }
 
 const GROUPS: StageGroup[] = [
-  { key: 'scan', label: 'Scanning files', tooltip: 'scan', stages: ['scan'] },
-  { key: 'parse', label: 'Parsing code', tooltip: 'parse', stages: ['parse'] },
-  { key: 'resolve', label: 'Linking imports', tooltip: 'resolve · graph', stages: ['resolve', 'graph'] },
-  { key: 'detect', label: 'Detecting frameworks', tooltip: 'detect', stages: ['detect'] },
-  { key: 'health', label: 'Checking structure', tooltip: 'health', stages: ['health'] },
-  { key: 'summarize', label: 'Explaining each file', tooltip: 'summarize', stages: ['summarize'] },
-  { key: 'features', label: 'Grouping into features', tooltip: 'rollup · features', stages: ['rollup', 'features'] },
-  { key: 'overview', label: 'Writing the overview', tooltip: 'overview · changeability · fts', stages: ['overview', 'changeability', 'fts'] },
+  { key: 'scan', label: 'stage.scan', tooltip: 'scan', stages: ['scan'] },
+  { key: 'parse', label: 'stage.parse', tooltip: 'parse', stages: ['parse'] },
+  {
+    key: 'resolve',
+    label: 'stage.resolve',
+    tooltip: 'resolve · graph',
+    stages: ['resolve', 'graph'],
+  },
+  { key: 'detect', label: 'stage.detect', tooltip: 'detect', stages: ['detect'] },
+  { key: 'health', label: 'stage.health', tooltip: 'health', stages: ['health'] },
+  { key: 'summarize', label: 'stage.summarize', tooltip: 'summarize', stages: ['summarize'] },
+  {
+    key: 'features',
+    label: 'stage.features',
+    tooltip: 'rollup · features',
+    stages: ['rollup', 'features'],
+  },
+  {
+    key: 'overview',
+    label: 'stage.overview',
+    tooltip: 'overview · changeability · fts',
+    stages: ['overview', 'changeability', 'fts'],
+  },
 ];
 
 export function SseProgress({
@@ -51,9 +69,7 @@ export function SseProgress({
     }
   }
 
-  const visibleGroups = includeAi
-    ? GROUPS
-    : GROUPS.slice(0, 5);
+  const visibleGroups = includeAi ? GROUPS : GROUPS.slice(0, 5);
 
   return (
     <div className="space-y-2.5">
@@ -61,13 +77,12 @@ export function SseProgress({
         const ev = latestByGroup.get(grp.key);
         const completed = isDone || idx < activeGroupIndex;
         const active = !isDone && idx === activeGroupIndex;
-        const pct =
-          ev && ev.total > 0 ? Math.min(100, Math.round((ev.done / ev.total) * 100)) : 0;
+        const pct = ev && ev.total > 0 ? Math.min(100, Math.round((ev.done / ev.total) * 100)) : 0;
 
         return (
           <div
             key={grp.key}
-            title={`Engine stage: ${grp.tooltip}`}
+            title={t('stage.detail', { name: grp.tooltip })}
             className={cn(
               'flex items-center justify-between gap-4 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm',
               !completed && !active && 'opacity-55',
@@ -85,7 +100,7 @@ export function SseProgress({
               ) : (
                 <Circle className="h-4 w-4 text-[var(--text-muted)] shrink-0" />
               )}
-              <span className="font-medium text-[var(--text)]">{grp.label}</span>
+              <span className="font-medium text-[var(--text)]">{t(grp.label)}</span>
               {grp.key === 'detect' && stackNames.length > 0 && (
                 <span className="text-xs text-[var(--text-muted)] truncate">
                   {stackNames.join(' · ')}

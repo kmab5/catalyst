@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { api } from '@/api/client';
-import {
-  useOverview,
-  useProject,
-  useProvidersDetect,
-  useSettings,
-} from '@/api/hooks/queries';
+import { useOverview, useProject, useProvidersDetect, useSettings } from '@/api/hooks/queries';
 import { useRunEvents } from '@/api/hooks/useRunEvents';
 import { EstimateDialog } from '@/components/EstimateDialog';
 import { SseProgress } from '@/components/SseProgress';
@@ -25,13 +20,18 @@ function ProjectIndexing({ pid }: { pid: string }) {
   const { data: settings } = useSettings();
   const { data: detected } = useProvidersDetect();
   const location = useLocation();
+  const requestedLanguage = location.state?.language;
+  const language =
+    requestedLanguage === 'tr' || requestedLanguage === 'en' ? requestedLanguage : undefined;
   const runId: string | undefined = location.state?.runId;
   const [starting, setStarting] = useState(false);
   const reviewExisting = Boolean(location.state?.reviewExisting) && !project?.activeRunId;
   const reviewEstimate = Boolean(location.state?.reviewEstimate);
   const [failure, setFailure] = useState<{ error: unknown; retry: () => void }>();
 
-  const effectiveRunId = reviewExisting ? null : runId ?? project?.activeRunId ?? project?.lastRunId ?? null;
+  const effectiveRunId = reviewExisting
+    ? null
+    : (runId ?? project?.activeRunId ?? project?.lastRunId ?? null);
   const { events, last, status } = useRunEvents(pid, effectiveRunId);
   const { data: overview } = useOverview(pid);
 
@@ -42,7 +42,12 @@ function ProjectIndexing({ pid }: { pid: string }) {
   const noProvider = settings && settings.provider === null;
 
   useEffect(() => {
-    if (status === 'done' && pid && last?.runId === effectiveRunId && (!reviewEstimate || noProvider || last.stage === 'cancelled')) {
+    if (
+      status === 'done' &&
+      pid &&
+      last?.runId === effectiveRunId &&
+      (!reviewEstimate || noProvider || last.stage === 'cancelled')
+    ) {
       const timer = window.setTimeout(() => {
         navigate(`/p/${pid}/overview`);
       }, 600);
@@ -55,8 +60,11 @@ function ProjectIndexing({ pid }: { pid: string }) {
     setStarting(true);
     setFailure(undefined);
     try {
-      const res = await api.index.start(pid, { ai });
-      navigate(location.pathname, { replace: true, state: { runId: res.runId, reviewEstimate: estimateAfter } });
+      const res = await api.index.start(pid, { ai, language });
+      navigate(location.pathname, {
+        replace: true,
+        state: { runId: res.runId, reviewEstimate: estimateAfter },
+      });
     } catch (err) {
       setFailure({ error: err, retry: () => void startRun(ai, estimateAfter) });
     } finally {
@@ -116,7 +124,7 @@ function ProjectIndexing({ pid }: { pid: string }) {
           <button
             type="button"
             disabled={starting}
-            onClick={() => effectiveRunId ? navigate(`/p/${pid}/overview`) : void startRun(false)}
+            onClick={() => (effectiveRunId ? navigate(`/p/${pid}/overview`) : void startRun(false))}
             className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg)]"
           >
             {t('indexing.structureOnly')}
@@ -124,14 +132,26 @@ function ProjectIndexing({ pid }: { pid: string }) {
         </div>
       )}
 
-      {(reviewExisting || (reviewEstimate && status === 'done' && last?.stage === 'done')) && settings?.provider && (
-        <EstimateDialog pid={pid} pending={starting} onContinue={() => void startRun(true)}
-          onCancel={() => navigate(`/p/${pid}/overview`)} />
-      )}
+      {(reviewExisting || (reviewEstimate && status === 'done' && last?.stage === 'done')) &&
+        settings?.provider && (
+          <EstimateDialog
+            pid={pid}
+            language={language}
+            pending={starting}
+            onContinue={() => void startRun(true)}
+            onCancel={() => navigate(`/p/${pid}/overview`)}
+          />
+        )}
       {failure && <ErrorCard error={failure.error} onRetry={failure.retry} />}
       {!reviewExisting && !effectiveRunId && project && settings?.provider && (
-        <button type="button" disabled={starting} onClick={() => void startRun(false, true)}
-          className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-white">{t('indexing.start')}</button>
+        <button
+          type="button"
+          disabled={starting}
+          onClick={() => void startRun(false, true)}
+          className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-white"
+        >
+          {t('indexing.start')}
+        </button>
       )}
 
       {status === 'error' && (
@@ -141,31 +161,35 @@ function ProjectIndexing({ pid }: { pid: string }) {
         />
       )}
 
-      {!reviewExisting && <SseProgress
-        events={events}
-        stackNames={overview?.stack.map((s) => s.name) ?? []}
-        includeAi={!noProvider && !reviewEstimate}
-      />}
+      {!reviewExisting && (
+        <SseProgress
+          events={events}
+          stackNames={overview?.stack.map((s) => s.name) ?? []}
+          includeAi={!noProvider && !reviewEstimate}
+        />
+      )}
 
-      {effectiveRunId && status === 'open' && <div className="flex items-center justify-between pt-2">
-        <button
-          type="button"
-          onClick={() => void handleCancel()}
-          className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3.5 py-1.5 text-xs font-medium hover:bg-[var(--surface-2)]"
-        >
-          {t('common.cancel')}
-        </button>
-
-        {inAiPhase && (
+      {effectiveRunId && status === 'open' && (
+        <div className="flex items-center justify-between pt-2">
           <button
             type="button"
             onClick={() => void handleCancel()}
             className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3.5 py-1.5 text-xs font-medium hover:bg-[var(--surface-2)]"
           >
-            {t('indexing.skipAi')}
+            {t('common.cancel')}
           </button>
-        )}
-      </div>}
+
+          {inAiPhase && (
+            <button
+              type="button"
+              onClick={() => void handleCancel()}
+              className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3.5 py-1.5 text-xs font-medium hover:bg-[var(--surface-2)]"
+            >
+              {t('indexing.skipAi')}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

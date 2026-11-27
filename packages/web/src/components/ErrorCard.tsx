@@ -12,7 +12,7 @@ export function ErrorCard({
 }) {
   const apiErr = error instanceof ApiError ? error : null;
   const message =
-    error instanceof Error ? error.message : 'Something went wrong.';
+    error instanceof Error ? error.message : t('common.error');
 
   return (
     <div

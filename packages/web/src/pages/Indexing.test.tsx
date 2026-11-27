@@ -14,13 +14,24 @@ class TestEvents extends EventTarget {
   static readonly CLOSED = 2;
   readonly readyState = TestEvents.CLOSED;
   static latest?: TestEvents;
-  constructor() { super(); TestEvents.latest = this; }
+  constructor() {
+    super();
+    TestEvents.latest = this;
+  }
   close = vi.fn();
   send(event: ProgressEvent) {
-    this.dispatchEvent(new MessageEvent(event.stage === 'done' ? 'done' : 'progress', { data: JSON.stringify(event) }));
+    this.dispatchEvent(
+      new MessageEvent(event.stage === 'done' ? 'done' : 'progress', {
+        data: JSON.stringify(event),
+      }),
+    );
   }
 }
-beforeEach(() => { vi.stubGlobal('fetch', fetch); vi.stubGlobal('EventSource', TestEvents); TestEvents.latest = undefined; });
+beforeEach(() => {
+  vi.stubGlobal('fetch', fetch);
+  vi.stubGlobal('EventSource', TestEvents);
+  TestEvents.latest = undefined;
+});
 afterEach(() => vi.unstubAllGlobals());
 function open() {
   return renderPage(<Indexing />, `/p/${project.id}/indexing`, '/p/:pid/indexing', [
@@ -31,18 +42,27 @@ test('shows stage counts, degradation, and navigates on completion', async () =>
   installMockFetch();
   open();
   await waitFor(() => expect(TestEvents.latest).toBeDefined());
-  act(() => TestEvents.latest!.send({runId, stage: 'summarize', done: 129, total: 129, message: 'Summarized', degraded: true}));
+  act(() =>
+    TestEvents.latest!.send({
+      runId,
+      stage: 'summarize',
+      done: 129,
+      total: 129,
+      message: 'Summarized',
+      degraded: true,
+    }),
+  );
   expect(screen.getByText('129/129')).toBeVisible();
   expect(screen.getByText(/Some explanations failed/)).toBeVisible();
-  act(() => TestEvents.latest!.send({runId, stage: 'done', done: 1, total: 1}));
-  expect(await screen.findByRole('heading', {name: 'Project overview'})).toBeVisible();
+  act(() => TestEvents.latest!.send({ runId, stage: 'done', done: 1, total: 1 }));
+  expect(await screen.findByRole('heading', { name: 'Project overview' })).toBeVisible();
 });
 test('cancels the active run using its actual ID', async () => {
-  const cancel = vi.fn(() => Response.json({ok: true}));
-  installMockFetch(fixture, {[`POST /api/projects/${project.id}/runs/${runId}/cancel`]: cancel});
+  const cancel = vi.fn(() => Response.json({ ok: true }));
+  installMockFetch(fixture, { [`POST /api/projects/${project.id}/runs/${runId}/cancel`]: cancel });
   open();
   await waitFor(() => expect(TestEvents.latest).toBeDefined());
-  await userEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(cancel).toHaveBeenCalledOnce();
 });
 test('offers a structural run when no provider or index exists', async () => {
@@ -50,12 +70,12 @@ test('offers a structural run when no provider or index exists', async () => {
   f.settings.provider = null;
   f.projects[0]!.lastRunId = null;
   const start = vi.fn(async (req: Request) => {
-    expect(await req.json()).toEqual({ai: false});
-    return Response.json({runId});
+    expect(await req.json()).toEqual({ ai: false });
+    return Response.json({ runId });
   });
-  installMockFetch(f, {[`POST /api/projects/${project.id}/index`]: start});
+  installMockFetch(f, { [`POST /api/projects/${project.id}/index`]: start });
   open();
-  await userEvent.click(await screen.findByRole('button', {name: /Skip \(structure only\)/}));
+  await userEvent.click(await screen.findByRole('button', { name: /Skip \(structure only\)/ }));
   expect(start).toHaveBeenCalledOnce();
 });
 
@@ -64,5 +84,5 @@ test('recovers a completed run from disk when its live stream expired', async ()
   open();
   await waitFor(() => expect(TestEvents.latest).toBeDefined());
   act(() => TestEvents.latest!.dispatchEvent(new Event('error')));
-  expect(await screen.findByRole('heading', {name: 'Project overview'})).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Project overview' })).toBeVisible();
 });

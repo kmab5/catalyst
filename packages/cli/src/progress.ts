@@ -38,7 +38,11 @@ export function createProgressRenderer({
 }) {
   const stages = new Map<string, ProgressEvent>();
   const colors = createColors(isTTY);
-  let lastStage: string | undefined;
+  let previous: ProgressEvent | undefined;
+  function writeStage(event: ProgressEvent) {
+    const detail = event.stage === 'parse' && event.message ? ' · ' + event.message : '';
+    stream.write(`[catalyst] ${event.stage} ${event.done}/${event.total}${detail}\n`);
+  }
   let rows = 0;
   let lastDraw = -Infinity;
   function draw(run?: RunDTO) {
@@ -66,12 +70,13 @@ export function createProgressRenderer({
       stages.set(event.stage, event);
       if (isTTY) {
         if (Date.now() - lastDraw >= 1000 / Math.min(10, Math.max(1, fps))) draw();
-      } else if (event.stage !== lastStage) {
-        stream.write('[catalyst] ' + event.stage + ' ' + event.done + '/' + event.total + '\n');
+      } else if (previous && previous.stage !== event.stage) {
+        writeStage(previous);
       }
-      lastStage = event.stage;
+      previous = event;
     },
     finish(run: RunDTO) {
+      if (!isTTY && previous) writeStage(previous);
       if (isTTY && stages.size) {
         draw(run);
         if (run.stats?.llmCalls || run.stats?.cacheHits) {
