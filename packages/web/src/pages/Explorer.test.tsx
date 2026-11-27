@@ -94,3 +94,22 @@ test('a deep link into a large file requests the window containing the selected 
     expect(document.querySelector('[data-line="2002"]')).toHaveClass('line-highlight'),
   );
 });
+
+test('provenance shows the recorded summary model and generation time when available', async () => {
+  const createdAt = Date.UTC(2026, 10, 27, 9, 30);
+  installMockFetch({
+    ...fixture,
+    nodes: {
+      ...fixture.nodes,
+      [fileId]: { ...fixture.nodes[fileId]!, summaryMeta: { model: 'fixture-model', createdAt } },
+    },
+  });
+  renderPage(<Explorer />, `/p/${pid}/explorer?node=${encodeURIComponent(fileId)}`, '/p/:pid/:page');
+  const panel = within(await screen.findByTestId('xray-panel'));
+  fireEvent.click(await panel.findByRole('heading', { name: 'Provenance' }));
+  expect(panel.getByText('fixture-model')).toBeVisible();
+  expect(panel.getByText(new Date(createdAt).toLocaleString()).closest('time')).toHaveAttribute(
+    'datetime',
+    new Date(createdAt).toISOString(),
+  );
+});

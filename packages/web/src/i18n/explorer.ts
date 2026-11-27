@@ -1,4 +1,6 @@
 export const explorerMessages = {
+  'explorer.model': 'Summary model',
+  'explorer.generated': 'Generated',
   'explorer.copy': 'Copy for AI',
   'explorer.copied': 'Copied',
   'explorer.copyFailed': 'Clipboard access failed. Check browser permissions and try again.',

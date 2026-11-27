@@ -181,7 +181,8 @@ export function XRayPanel({ nodeId, onClose }: { nodeId: string; onClose?: () =>
   const [clipboard, setClipboard] = useState<'copied' | 'failed'>();
   if (error) return <ErrorCard error={error} onRetry={() => void refetch()} />;
   if (!data || !pid) return <PageSkeleton />;
-  const { node, summary } = data;
+  const { node, summary, summaryMeta } = data;
+  const generated = summaryMeta ? new Date(summaryMeta.createdAt) : undefined;
   const purpose = data.symbolPurpose ?? summary?.purpose;
   const position = summary && 'positionInApp' in summary && summary.positionInApp;
   const citations = [node, ...data.upstream.map((e) => e.node), ...data.downstream.map((e) => e.node)];
@@ -288,6 +289,20 @@ export function XRayPanel({ nodeId, onClose }: { nodeId: string; onClose?: () =>
         )}
         {node.signature && <code className="block break-all">{node.signature}</code>}
         <dl className="xray-metrics">
+          {summaryMeta && (
+            <div>
+              <dt>{t('explorer.model')}</dt>
+              <dd>{summaryMeta.model}</dd>
+            </div>
+          )}
+          {generated && Number.isFinite(generated.getTime()) && (
+            <div>
+              <dt>{t('explorer.generated')}</dt>
+              <dd>
+                <time dateTime={generated.toISOString()}>{generated.toLocaleString()}</time>
+              </dd>
+            </div>
+          )}
           {Object.entries(node.metrics).map(([key, value]) => (
             <div key={key}>
               <dt>{key}</dt>
