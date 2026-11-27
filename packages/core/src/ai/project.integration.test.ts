@@ -179,6 +179,16 @@ test('Project indexing and Ask SSE use the real SDK transport, persistent graph 
   const engine = createEngine({ homeDir: join(temp, 'home'), env: {} });
   try {
     await cp(fixture, root, { recursive: true, filter: (path) => !path.endsWith('.catalyst') });
+    const project = await engine.projects.open(root);
+    const app = createApp(engine, { token: 'test-token' });
+    const preflight = await app.request('/api/projects/' + project.id + '/ask', {
+      method: 'POST',
+      headers: { 'X-Catalyst-Token': 'test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: 'What is this project?' }),
+    });
+    expect(preflight.status).toBe(412);
+    expect(await preflight.json()).toMatchObject({ error: { code: 'AI_NOT_CONFIGURED' } });
+    expect(requests).toHaveLength(0);
     engine.settings.update({
       provider: {
         type: 'openai-compatible',
@@ -187,7 +197,6 @@ test('Project indexing and Ask SSE use the real SDK transport, persistent graph 
       },
       models: { fast: 'fixture-fast', smart: 'fixture-smart' },
     });
-    const project = await engine.projects.open(root);
     const cold = await project.index({ ai: true, language: 'en' }).done;
     expect(cold.stats?.errors).toEqual([]);
     expect(cold.status).toBe('done');
@@ -210,7 +219,6 @@ test('Project indexing and Ask SSE use the real SDK transport, persistent graph 
       warm = await project.index({ ai: true, language: 'en' }).done;
     expect(warm.stats?.llmCalls).toBe(0);
     expect(requests).toHaveLength(count);
-    const app = createApp(engine, { token: 'test-token' });
     for (const [question, found] of [
       ['How do Stripe webhooks work?', true],
       ['Is password reset implemented?', false],

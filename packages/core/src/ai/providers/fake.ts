@@ -50,7 +50,10 @@ export class FakeProvider implements LLMProvider {
   }
   async *streamText(r: StreamRequest): AsyncIterable<StreamPart> {
     this.record(r.system + '\n' + JSON.stringify(r.messages));
-    for (const part of this.script.streams?.shift() ?? []) yield part;
+    for (const part of this.script.streams?.shift() ?? []) {
+      yield part;
+      if (part.type === 'tool-call' && r.tools?.[part.name]) await r.tools[part.name]!.execute(part.args);
+    }
   }
   async test() {
     return { ok: true, model: this.modelFor('fast'), latencyMs: 0 };

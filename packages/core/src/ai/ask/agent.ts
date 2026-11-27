@@ -11,6 +11,7 @@ import type { QueryApi } from '../../query/types.js';
 import { askTools } from './tools.js';
 import { validateCitations } from './citations.js';
 import { preamble } from '../prompts/shared.js';
+import { redactSecrets } from '../redact.js';
 import type { LLMClient } from '../client.js';
 import type { ChatMessage } from '../providers/types.js';
 const expansion = z.object({
@@ -20,31 +21,31 @@ const expansion = z.object({
   mightNotExist: z.boolean(),
 });
 function answerParts(full: string) {
-  const match = /\n?\s*(?:```(?:json)?\s*)?(\{\s*"found"\s*:[^\n]*\})\s*(?:```)?\s*$/.exec(full);
-  if (match) {
+  const text = full
+    .trimEnd()
+    .replace(/\s*```$/, '')
+    .trimEnd();
+  for (const opening of [...text.matchAll(/^\s*\{/gm)].reverse()) {
     try {
-      const data = JSON.parse(match[1]!);
-      if (typeof data.found === 'boolean')
-        return { markdown: full.slice(0, match.index).trim(), found: data.found };
+      const data = JSON.parse(text.slice(opening.index));
+      if (typeof data.found === 'boolean' && Array.isArray(data.searched)) {
+        const markdown = text
+          .slice(0, opening.index)
+          .trimEnd()
+          .replace(/\s*```(?:json)?$/, '')
+          .trim();
+        if (markdown) return { markdown, found: data.found };
+      }
     } catch {}
   }
-  return { markdown: full.trim(), found: true };
+  throw new Error('Provider omitted the required answer status');
 }
 // Hold only the possible trailing status block, allowing prose to stream immediately.
 function visibleLength(full: string) {
-  const line = full.lastIndexOf('\n') + 1;
-  const tail = full.slice(line).trimStart();
-  const opening = '{"found"';
-  if (
-    !tail ||
-    tail.startsWith('```') ||
-    opening.startsWith(tail) ||
-    tail.replace(/\s/g, '').startsWith(opening)
-  ) {
-    const fence = full.slice(0, line).match(/\n```(?:json)?\s*$/);
-    return fence?.index ?? Math.max(0, line - 1);
-  }
-  return full.length;
+  // Fenced code examples are held until the final answer is parsed, so partial JSON metadata
+  // (including reordered fields and pretty-printed JSON) cannot leak into the token stream.
+  const block = /(?:^|\n)[ \t]*(?:\{|`)/.exec(full);
+  return block?.index ?? full.trimEnd().length;
 }
 export async function* ask(
   client: LLMClient,
@@ -57,6 +58,27 @@ export async function* ask(
     tools = askTools(q, lang),
     searched = new Set<string>(),
     queries = new Set<string>();
+  const structuralChecks = new Set<string>();
+  const listNames = ['list_routes', 'list_db_models', 'list_features'];
+  // Count successful query executions, including empty results. A model-emitted tool name or a
+  // search string that resembles one cannot establish that the index was actually consulted.
+  for (const [name, def] of Object.entries(tools)) {
+    const execute = def.execute;
+    def.execute = async (args) => {
+      const result = await execute(args);
+      if (result && typeof result === 'object' && 'error' in result) return result;
+      if (listNames.includes(name)) {
+        structuralChecks.add(name);
+        searched.add(name);
+      }
+      if (['search', 'find'].includes(name) && typeof args?.query === 'string' && args.query.trim()) {
+        searched.add(args.query);
+        queries.add(args.query.trim().toLowerCase());
+      }
+      return result;
+    };
+  }
+  let retrieved: Set<string> | undefined;
   const messages: ChatMessage[] = [
     ...(req.history ?? []).slice(-10),
     { role: 'user', content: req.question },
@@ -77,12 +99,15 @@ export async function* ask(
         signal,
       });
       const scores = new Map<string, number>();
+      const snippets = new Map<string, string>();
       for (const keyword of plan.keywords) {
         searched.add(keyword);
         queries.add(keyword);
         const lists = [q.find(keyword, { kinds: plan.kinds, limit: 8 }), q.search(keyword, { limit: 8 })];
         for (const list of lists)
           list.forEach((row, i) => scores.set(row.node.id, (scores.get(row.node.id) ?? 0) + 1 / (1 + i)));
+        for (const row of lists[1] ?? [])
+          if ('snippet' in row && !snippets.has(row.node.id)) snippets.set(row.node.id, row.snippet);
       }
       const top = [...scores].sort((a, b) => b[1] - a[1]).slice(0, 20);
       const context = top.map(([id], i) => {
@@ -90,6 +115,7 @@ export async function* ask(
         return {
           id,
           purpose: x.summary?.purpose,
+          snippet: snippets.get(id),
           features: x.features,
           neighbors:
             i < 5 ? [...x.upstream, ...x.downstream].slice(0, 20).map((e) => [e.kind, e.node.id]) : [],
@@ -97,14 +123,21 @@ export async function* ask(
       });
       const structural: Record<string, unknown> = {};
       if (plan.wantsStructure || plan.mightNotExist)
-        for (const name of ['list_routes', 'list_db_models', 'list_features']) {
+        for (const name of listNames) {
           structural[name] = await tools[name]!.execute({});
-          searched.add(name);
         }
+      const evidence = JSON.stringify({ context, structural }, (_key, value: unknown) =>
+        typeof value === 'string' ? redactSecrets(value) : value,
+      ).slice(0, 60000);
+      retrieved = new Set(
+        [...evidence.matchAll(/"((?:file|dir|sym|route|db|env|pkg|svc|feature):[^"\\\n]*)"/g)].map(
+          (m) => m[1]!,
+        ),
+      );
       full = await client.text({
         tier: 'smart',
         system,
-        prompt: JSON.stringify({ messages, context, structural }).slice(0, 70000),
+        prompt: JSON.stringify({ messages, evidence, allowedIds: [...retrieved] }),
         signal,
       });
       yield { type: 'token', text: answerParts(full).markdown };
@@ -125,12 +158,6 @@ export async function* ask(
           signal.throwIfAborted();
           if (part.type === 'tool-call') {
             steps++;
-            const args = part.args as { query?: string };
-            if (['search', 'find'].includes(part.name) && typeof args?.query === 'string') {
-              searched.add(args.query);
-              queries.add(args.query.trim().toLowerCase());
-            }
-            if (part.name.startsWith('list_')) searched.add(part.name);
             yield {
               type: 'tool',
               name: part.name,
@@ -153,7 +180,7 @@ export async function* ask(
           answerParts(full).found ||
           pass ||
           remaining <= 0 ||
-          (queries.size >= 3 && [...searched].some((s) => s.startsWith('list_')))
+          (queries.size >= 3 && structuralChecks.size > 0)
         )
           break;
         messages.push(
@@ -172,7 +199,7 @@ export async function* ask(
     const parsed = answerParts(full);
     const checked = validateCitations(parsed.markdown, (id) => {
       try {
-        return !!q.getNode(id);
+        return (!retrieved || retrieved.has(id)) && !!q.getNode(id);
       } catch {
         return false;
       }
@@ -180,7 +207,7 @@ export async function* ask(
     if (
       !parsed.found &&
       client.provider.supportsTools &&
-      (queries.size < 3 || ![...searched].some((s) => s.startsWith('list_')))
+      (queries.size < 3 || structuralChecks.size === 0)
     ) {
       yield {
         type: 'error',
