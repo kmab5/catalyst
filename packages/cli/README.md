@@ -17,4 +17,6 @@ catalyst impact ./my-app --no-narrative
 catalyst mcp ./my-app
 ```
 
+Ask shows a live preview in an interactive terminal. When you pipe or redirect its output, it writes the final answer with validated file references and sources. Use `--json` for the structured answer.
+
 Catalyst stores the project index under `.catalyst/` in the repository. It binds to loopback by default, collects no telemetry, and uses the configured provider for AI requests. Structural indexing works offline.

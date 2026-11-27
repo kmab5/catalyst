@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
@@ -17,7 +18,56 @@ import { expect, test } from 'vitest';
 
 const cli = fileURLToPath(new URL('../', import.meta.url));
 
-test('published CLI ships a standalone bin, web UI, and working offline parsers', () => {
+// Windows terminates a subprocess for process.kill('SIGINT'), bypassing Node's
+// signal handler. An IPC message lets the actual CLI receive the same interrupt
+// on every platform while the MCP client deliberately keeps its input pipe open.
+async function checkMcpShutdown(bin: string, project: string, env: NodeJS.ProcessEnv) {
+  const hook = 'process.once("message", () => { process.disconnect(); process.emit("SIGINT"); });';
+  const child = spawn(
+    process.execPath,
+    ['--import', 'data:text/javascript,' + encodeURIComponent(hook), bin, 'mcp', project],
+    {
+      cwd: project,
+      env,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    },
+  );
+  const exited = once(child, 'exit');
+  const timer = setTimeout(() => child.kill(), 10_000);
+  try {
+    const handshake = once(child.stdout!, 'data');
+    child.stdin!.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'pack-smoke', version: '1' },
+        },
+      }) + '\n',
+    );
+    await Promise.race([
+      handshake,
+      exited.then(() => {
+        throw new Error('MCP ended before initialization');
+      }),
+    ]);
+    child.send('interrupt');
+    const [code] = await exited;
+    expect(code).toBe(130);
+  } finally {
+    clearTimeout(timer);
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill();
+      await exited;
+    }
+  }
+}
+
+test('published CLI ships a standalone bin, web UI, and working offline parsers', async () => {
   const temp = mkdtempSync(join(tmpdir(), 'catalyst-pack-'));
   const env = { ...process.env, COREPACK_ENABLE_NETWORK: '0', npm_config_offline: 'true' };
   try {
@@ -60,13 +110,14 @@ test('published CLI ships a standalone bin, web UI, and working offline parsers'
     mkdirSync(project);
     writeFileSync(join(project, 'package.json'), '{"name":"sample","type":"module"}');
     writeFileSync(join(project, 'helper.ts'), 'export function greet() { return "hi"; }');
+    const isolated = { ...env, HOME: home, USERPROFILE: home, CATALYST_PROVIDER: 'none' };
     const run = (...args: string[]) =>
       execFileSync(process.execPath, [bin, ...args], {
         cwd: project,
         encoding: 'utf8',
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...env, HOME: home, USERPROFILE: home, CATALYST_PROVIDER: 'none' },
+        env: isolated,
       }).trim();
     expect(run('--version')).toBe(manifest.version);
     expect(JSON.parse(run('index', '--json', '--no-ai'))).toMatchObject({
@@ -76,6 +127,7 @@ test('published CLI ships a standalone bin, web UI, and working offline parsers'
     const projects = run('projects');
     expect(projects).toContain('sample');
     expect(JSON.parse(run('health', '--json')).summary).toHaveProperty('high');
+    await checkMcpShutdown(bin, project, isolated);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }

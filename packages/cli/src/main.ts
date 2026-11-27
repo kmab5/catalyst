@@ -80,7 +80,11 @@ export function buildProgram(deps: CliDeps) {
     .version(manifest.version)
     .description('Explore a local codebase.')
     .argument('[path]', 'project directory')
-    .option('--port <port>', 'preferred server port', numberArg(1, 65535), 4321)
+    .option(
+      '--port <port>',
+      'preferred server port (default: CATALYST_PORT or 4321)',
+      numberArg(1, 65535),
+    )
     .option('--host <host>', 'server host', '127.0.0.1')
     .option('--verbose', 'write debug messages to stderr')
     .option('--no-open', 'print the URL without opening a browser')
@@ -175,7 +179,7 @@ export function buildProgram(deps: CliDeps) {
     .description('Serve project tools over MCP stdio')
     .action(
       perform(async (engine, path: string | undefined) => {
-        await deps.startMcp(engine, directory(deps.cwd, path));
+        await deps.startMcp(engine, directory(deps.cwd, path), deps.signal);
         await deps.waitForStop?.('mcp');
         return EXIT.OK;
       }),
@@ -261,11 +265,19 @@ export async function main(args: string[]): Promise<number> {
         grammarsDir: fileURLToPath(new URL('./grammars/', import.meta.url)),
         waitForStop: async (mode) => {
           if (mode === 'mcp') {
-            if (process.stdin.readableEnded) return;
-            await Promise.race([
-              stopping,
-              new Promise<void>((done) => process.stdin.once('end', done)),
-            ]);
+            if (process.stdin.readableEnded || process.stdin.destroyed || controller.signal.aborted)
+              return;
+            await new Promise<void>((resolve) => {
+              const stopped = () => {
+                process.stdin.off('end', stopped);
+                process.stdin.off('close', stopped);
+                controller.signal.removeEventListener('abort', stopped);
+                resolve();
+              };
+              process.stdin.once('end', stopped);
+              process.stdin.once('close', stopped);
+              controller.signal.addEventListener('abort', stopped, { once: true });
+            });
           } else {
             await stopping;
             await new Promise<void>((done) => setTimeout(done, Math.max(0, stopAt - Date.now())));
