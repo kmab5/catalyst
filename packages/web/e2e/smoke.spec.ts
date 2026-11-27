@@ -34,8 +34,8 @@ test('open a structural index and explore the fixture', async ({ page, request }
   await expect(page.locator('canvas').first()).toBeVisible();
   await page.getByRole('link', { name: /health/i }).click();
   await expect(page.getByText(/cycle/i).first()).toBeVisible();
-  await expect(page.getByText(/\ba\.ts\b/).first()).toBeVisible();
-  await expect(page.getByText(/\bb\.ts\b/).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'a.ts', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'b.ts', exact: true }).first()).toBeVisible();
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox').fill('session');
   await expect(page.getByRole('option').filter({ hasText: /session\.ts/ }).first()).toBeVisible();
