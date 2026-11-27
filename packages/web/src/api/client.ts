@@ -31,7 +31,7 @@ import {
   ErrorBody,
 } from './contract';
 import { ApiError } from './errors';
-import { getToken } from './token';
+import { fetchWithToken } from './token';
 
 type IndexHeaderListener = (pid: string, runId: string) => void;
 const indexHeaderListeners = new Set<IndexHeaderListener>();
@@ -78,14 +78,9 @@ async function request<T>(
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (needsToken) {
-    const tok = getToken();
-    if (tok) headers.set('X-Catalyst-Token', tok);
-  }
-
   let res: Response;
   try {
-    res = await fetch(path, { ...init, headers });
+    res = await (needsToken ? fetchWithToken : fetch)(path, { ...init, headers });
   } catch (err) {
     reportServerGone();
     throw new ApiError(

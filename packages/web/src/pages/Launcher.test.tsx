@@ -22,3 +22,16 @@ test('prefills the CLI suggestion and starts a run when opening an unindexed rec
   await waitFor(() => expect(router.state.location.pathname).toBe(`/p/${project.id}/indexing`));
   expect(start).toHaveBeenCalledOnce();
 });
+
+test('opening a stale project preserves its existing AI index until the estimate is accepted', async () => {
+  vi.stubGlobal('fetch', fetch);
+  const f = getFixture();
+  const project = f.projects[0]!;
+  project.status = 'stale';
+  const start = vi.fn(() => Response.json({runId:'should-not-start'}));
+  installMockFetch(f, {[`POST /api/projects/${project.id}/index`]: start});
+  const {router} = renderPage(<Launcher />, '/', '/', [{path:'/p/:pid/indexing', element:<p>Review</p>}]);
+  await userEvent.click(await screen.findByRole('button', {name:/taxonomy.*stale/i}));
+  await waitFor(() => expect(router.state.location.state).toEqual({reviewExisting:true}));
+  expect(start).not.toHaveBeenCalled();
+});

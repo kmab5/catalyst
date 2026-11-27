@@ -11,6 +11,8 @@ const project = fixture.projects[0]!;
 const runId = fixture.run.id;
 
 class TestEvents extends EventTarget {
+  static readonly CLOSED = 2;
+  readonly readyState = TestEvents.CLOSED;
   static latest?: TestEvents;
   constructor() { super(); TestEvents.latest = this; }
   close = vi.fn();
@@ -55,4 +57,12 @@ test('offers a structural run when no provider or index exists', async () => {
   open();
   await userEvent.click(await screen.findByRole('button', {name: /Skip \(structure only\)/}));
   expect(start).toHaveBeenCalledOnce();
+});
+
+test('recovers a completed run from disk when its live stream expired', async () => {
+  installMockFetch(fixture);
+  open();
+  await waitFor(() => expect(TestEvents.latest).toBeDefined());
+  act(() => TestEvents.latest!.dispatchEvent(new Event('error')));
+  expect(await screen.findByRole('heading', {name: 'Project overview'})).toBeVisible();
 });

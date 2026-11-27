@@ -50,7 +50,9 @@ export function Launcher() {
     setErrorMsg(null);
     try {
       const proj = await api.projects.open(trimmed);
-      if (proj.status === 'never-indexed' || proj.status === 'stale') {
+      if (proj.status === 'stale' && proj.lastRunId) {
+        navigate(`/p/${proj.id}/indexing`, { state: { reviewExisting: true } });
+      } else if (proj.status === 'never-indexed' || proj.status === 'stale') {
         const { runId } = await api.index.start(proj.id, { ai: false });
         navigate(`/p/${proj.id}/indexing`, { state: { runId, reviewEstimate: true } });
       } else if (proj.status === 'indexing') {

@@ -18,3 +18,38 @@ export function getToken(): string | null {
     return token || null;
   }
 }
+
+let refreshing: Promise<string | null> | undefined;
+
+async function readLaunchToken(): Promise<string | null> {
+  const page = await fetch('/', { cache: 'no-store', redirect: 'error', headers: { Accept: 'text/html' } });
+  if (!page.ok || !page.headers.get('Content-Type')?.includes('text/html')) return null;
+  const fresh = new DOMParser().parseFromString(await page.text(), 'text/html')
+    .querySelector('meta[name="catalyst-token"]')?.getAttribute('content');
+  if (!fresh) return null;
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="catalyst-token"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'catalyst-token';
+    document.head.append(meta);
+  }
+  meta.content = fresh;
+  return fresh;
+}
+
+/** The server rejects outdated launch tokens before dispatching a protected route. */
+export async function fetchWithToken(path: string, init: RequestInit): Promise<Response> {
+  const original = getToken();
+  const headers = new Headers(init.headers);
+  if (original) headers.set('X-Catalyst-Token', original);
+  const response = await fetch(path, { ...init, headers });
+  if (response.status !== 401 || init.signal?.aborted) return response;
+  let token = getToken();
+  if (token === original) {
+    refreshing ??= readLaunchToken().finally(() => { refreshing = undefined; });
+    token = await refreshing;
+  }
+  if (!token || token === original || init.signal?.aborted) return response;
+  headers.set('X-Catalyst-Token', token);
+  return fetch(path, { ...init, headers });
+}

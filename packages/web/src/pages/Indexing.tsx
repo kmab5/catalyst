@@ -27,10 +27,11 @@ function ProjectIndexing({ pid }: { pid: string }) {
   const location = useLocation();
   const runId: string | undefined = location.state?.runId;
   const [starting, setStarting] = useState(false);
+  const reviewExisting = Boolean(location.state?.reviewExisting) && !project?.activeRunId;
   const reviewEstimate = Boolean(location.state?.reviewEstimate);
   const [failure, setFailure] = useState<{ error: unknown; retry: () => void }>();
 
-  const effectiveRunId = runId ?? project?.activeRunId ?? project?.lastRunId ?? null;
+  const effectiveRunId = reviewExisting ? null : runId ?? project?.activeRunId ?? project?.lastRunId ?? null;
   const { events, last, status } = useRunEvents(pid, effectiveRunId);
   const { data: overview } = useOverview(pid);
 
@@ -123,12 +124,12 @@ function ProjectIndexing({ pid }: { pid: string }) {
         </div>
       )}
 
-      {reviewEstimate && status === 'done' && settings?.provider && pid && last?.stage === 'done' && (
+      {(reviewExisting || (reviewEstimate && status === 'done' && last?.stage === 'done')) && settings?.provider && (
         <EstimateDialog pid={pid} pending={starting} onContinue={() => void startRun(true)}
           onCancel={() => navigate(`/p/${pid}/overview`)} />
       )}
       {failure && <ErrorCard error={failure.error} onRetry={failure.retry} />}
-      {!effectiveRunId && project && settings?.provider && (
+      {!reviewExisting && !effectiveRunId && project && settings?.provider && (
         <button type="button" disabled={starting} onClick={() => void startRun(false, true)}
           className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-white">{t('indexing.start')}</button>
       )}
@@ -140,11 +141,11 @@ function ProjectIndexing({ pid }: { pid: string }) {
         />
       )}
 
-      <SseProgress
+      {!reviewExisting && <SseProgress
         events={events}
         stackNames={overview?.stack.map((s) => s.name) ?? []}
         includeAi={!noProvider && !reviewEstimate}
-      />
+      />}
 
       {effectiveRunId && status === 'open' && <div className="flex items-center justify-between pt-2">
         <button
