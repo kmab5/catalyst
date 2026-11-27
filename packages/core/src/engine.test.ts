@@ -14,6 +14,7 @@ import {
   ids,
 } from '@catalyst/shared';
 import { createEngine, type Engine, type Project } from './engine.js';
+import { LocalPathSource } from './project/local.js';
 
 const fixture = fileURLToPath(new URL('../../../fixtures/repos/ts-basic', import.meta.url));
 let dir: string, root: string, engine: Engine, project: Project;
@@ -29,6 +30,14 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 describe('index lifecycle and queries', () => {
+  it('reads through a project root alias and rejects linked directories inside it', async () => {
+    const alias = join(dir, 'project-alias');
+    await symlink(root, alias, 'junction');
+    await symlink(join(root, 'lib'), join(root, 'linked-lib'), 'junction');
+    const source = new LocalPathSource(alias);
+    await expect(source.readFile('lib/session.ts')).resolves.toContain('getCurrentUser');
+    await expect(source.readFile('linked-lib/session.ts')).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
   it('applies environment overrides without replacing stored provider credentials or metadata', async () => {
     const env: NodeJS.ProcessEnv = {};
     const home = join(dir, 'overrides');

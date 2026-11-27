@@ -22,7 +22,7 @@ export function expandHome(path: string, home: string) {
 }
 export function directory(path: string) {
   try {
-    const root = realpathSync(path);
+    const root = realpathSync.native(path);
     if (statSync(root).isDirectory()) return root;
   } catch {}
   throw new CatalystError('PATH_NOT_FOUND', 'Directory could not be opened');
@@ -138,7 +138,11 @@ export function secretPath(path: string) {
 }
 export class LocalPathSource {
   readonly kind = 'local';
-  constructor(readonly root: string) {}
+  readonly root: string;
+  constructor(root: string) {
+    // Match fs.promises.realpath, which expands Windows short names and root aliases.
+    this.root = realpathSync.native(root);
+  }
   private async safe(rel: string) {
     const path = await realpath(resolve(this.root, rel)),
       own = relative(this.root, path);
