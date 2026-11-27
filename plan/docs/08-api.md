@@ -73,7 +73,7 @@ data: {"runId":"r_9f2c","stage":"parse","done":84,"total":129}
 
 | Method | Path | Query / Body | Response | Priority |
 |---|---|---|---|---|
-| POST | `/api/projects/:pid/index` | `IndexRequest { mode?: 'incremental' \| 'full' = 'incremental', ai?: boolean = true, budgetUsd?: number, language?: 'en' \| 'tr' }` | `202 { runId: string }` | MVP |
+| POST | `/api/projects/:pid/index` | `IndexRequest { mode?: 'incremental' \| 'full' = 'incremental', ai?: boolean = true, budgetUsd?: number, concurrency?: number, language?: 'en' \| 'tr' }` | `202 { runId: string }` | MVP |
 | GET | `/api/projects/:pid/runs/:rid/events` | SSE | stream of `ProgressEvent` | MVP |
 | GET | `/api/projects/:pid/runs/:rid` | — | `RunDTO` | MVP |
 | POST | `/api/projects/:pid/runs/:rid/cancel` | — | `{ ok: true }` | MVP |
@@ -143,6 +143,7 @@ const RunDTO = z.object({
     stageMs: z.record(z.string(), z.number()),
     tokens: z.object({ in: z.number(), out: z.number() }),
     llmCalls: z.number(), cacheHits: z.number(), costUsdEstimate: z.number().nullable(),
+    errors: z.array(z.string()).optional(), repairs: z.record(z.string(), z.number()).optional(),
   }).nullable(),
   error: z.string().nullable(),
 });
@@ -228,7 +229,9 @@ const SettingsDTO = z.object({
   telemetry: z.literal(false),
 });
 const SettingsUpdate = z.object({
-  provider: ProviderConfig.nullable().optional(),   // null = disconnect (structural-only); apiKey omitted = keep existing
+  // The discriminated provider patch requires type. Other provider fields are optional.
+  // Omit apiKey to preserve its source. Use apiKey: null to clear it, or provider: null to disconnect.
+  provider: ProviderPatch.nullable().optional(),
   models: z.object({ fast: z.string(), smart: z.string() }).partial().optional(),
   outputLanguage: z.enum(['en', 'tr']).optional(),
   budgetUsd: z.number().nullable().optional(),

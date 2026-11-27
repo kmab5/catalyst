@@ -22,6 +22,7 @@ export interface AnalysisOptions extends ScanOptions {
     parsed: Record<string, ParsedFile>;
   };
   onProgress?: (stage: StructuralStage, done: number, total: number, message?: string) => void;
+  onParseError?: (path:string)=>void;
 }
 export interface AnalysisResult {
   files: SourceFile[];
@@ -34,9 +35,9 @@ export interface AnalysisResult {
   parsed: Record<string, ParsedFile>;
 }
 export async function analyze(root: string, opts: AnalysisOptions = {}): Promise<AnalysisResult> {
-  const stage = async (name: StructuralStage, done: number, total: number) => {
+  const stage = async (name: StructuralStage, done: number, total: number,message?:string) => {
     opts.signal?.throwIfAborted();
-    opts.onProgress?.(name, done, total);
+    opts.onProgress?.(name, done, total,message);
     await yieldToLoop();
     opts.signal?.throwIfAborted();
   };
@@ -90,7 +91,7 @@ export async function analyze(root: string, opts: AnalysisOptions = {}): Promise
   await stage('parse', 0, queue.length);
   if (queue.length) {
     const grammars = await loadGrammars(opts.grammarsDir);
-    let last = Date.now();
+    let last = Date.now(), errors=0;
     for (const [i, f] of queue.entries()) {
       opts.signal?.throwIfAborted();
       const parser = await grammars.parser(f.language).catch((error) => {
@@ -108,11 +109,12 @@ export async function analyze(root: string, opts: AnalysisOptions = {}): Promise
           f.parseError = p.partial ? 'partial' : null;
           f.parsedHash = f.hash + ':' + ADAPTER_VERSION;
         }
-      } catch (error) {
-        f.parseError = error instanceof Error ? error.message : 'parse_failed';
+      } catch {
+        f.parseError = 'parse_failed';
       }
+      if(f.parseError){errors++;opts.onParseError?.(f.path);}
       if ((i + 1) % 25 === 0 || i + 1 === queue.length || Date.now() - last >= 250) {
-        await stage('parse', i + 1, queue.length);
+        await stage('parse', i + 1, queue.length,errors?`${errors} parse error${errors===1?'':'s'}`:undefined);
         last = Date.now();
       }
     }

@@ -232,6 +232,7 @@ export function createEngine(opts: EngineOptions = {}): Engine {
               health: config.health,
               detectors: config.detectors,
               tier3,
+              onParseError:path=>opts.logger?.debug('Parse error: '+path.replace(/[\u0000-\u001f\u007f-\u009f]/g,'?')),
               onProgress: report,
             });
             signal.throwIfAborted();

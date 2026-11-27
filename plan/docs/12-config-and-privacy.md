@@ -50,6 +50,7 @@ If there is no config file, the provider is auto-selected in this order: `ANTHRO
     "thresholds": { "god-file": { "loc": 500 }, "god-function": { "cc": 20 }, "hub": { "minFanIn": 15 } }
   },
   "detectors": { "supabase": false },
+  "ai": { "tier3": false },                  // opt in to inferred extraction for unsupported source languages
   "maxFileBytes": 1048576
 }
 ```

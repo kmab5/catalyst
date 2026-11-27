@@ -300,6 +300,7 @@ const FeatureDetailDTO = Feature.extend({ members: z.array(FeatureMember.extend(
 const XRayDTO = z.object({                      // GET /nodes/:id
   node: NodeDTO,                                // full node incl. signature, metrics
   summary: FileSummary.or(ModuleSummary).nullable(),
+  summaryMeta: z.object({ model: z.string(), createdAt: z.number() }).nullable().optional(), // selected summary, epoch ms
   symbolPurpose: z.string().nullable(),         // when node is a symbol
   features: z.array(z.object({ id: z.string(), name: z.string(), role: z.string() })),
   upstream: z.array(EdgeRefDTO),                // who depends on me (1 hop), with edge kind + provenance
