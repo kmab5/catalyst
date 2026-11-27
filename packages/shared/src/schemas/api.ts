@@ -35,7 +35,7 @@ export const RunDTO = z.object({
   stats: z.object({
     stageMs: z.record(z.string(), z.number()),
     tokens: z.object({ in: z.number(), out: z.number() }),
-    llmCalls: z.number(), cacheHits: z.number(), costUsdEstimate: z.number().nullable(),
+    llmCalls: z.number(), cacheHits: z.number(), costUsdEstimate: z.number().nullable(), errors: z.array(z.string()).optional(), repairs: z.record(z.string(), z.number()).optional(),
   }).nullable(),
   error: z.string().nullable(),
 });
@@ -188,7 +188,7 @@ export const ImpactDTO = z.object({
 });
 export type ImpactDTO = z.infer<typeof ImpactDTO>;
 
-export const IndexRequest = z.object({ mode: z.enum(['incremental','full']).default('incremental'), ai: z.boolean().default(true), budgetUsd: z.number().nonnegative().optional(), language: Lang.optional() });
+export const IndexRequest = z.object({ concurrency: z.number().int().min(1).max(32).optional(), mode: z.enum(['incremental','full']).default('incremental'), ai: z.boolean().default(true), budgetUsd: z.number().nonnegative().optional(), language: Lang.optional() });
 export type IndexRequest = z.input<typeof IndexRequest>;
 
 export const AskRequest = z.object({ question: z.string().trim().min(1), lang: Lang.optional(), history: z.array(z.object({ role: z.enum(['user','assistant']), content: z.string() })).optional() });
