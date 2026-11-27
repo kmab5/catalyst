@@ -166,12 +166,13 @@ export function handleMock(
 
   m = matchPath('/api/projects/:pid/features/:fid', pathname);
   if (m && method === 'GET') {
-    const detail = f.featureDetails[m.fid];
+    const fid = m.fid ?? '';
+    const detail = f.featureDetails[fid];
     if (!detail) {
       return {
         status: 404,
         headers: projectHeaders,
-        json: { error: { code: 'NODE_NOT_FOUND', message: `Unknown feature ${m.fid}` } },
+        json: { error: { code: 'NODE_NOT_FOUND', message: `Unknown feature ${fid}` } },
       };
     }
     return { status: 200, headers: projectHeaders, json: detail };
@@ -184,12 +185,13 @@ export function handleMock(
 
   m = matchPath('/api/projects/:pid/nodes/:id', pathname);
   if (m && method === 'GET') {
-    const xray = f.nodes[m.id] ?? Object.values(f.nodes)[0];
+    const id = m.id ?? '';
+    const xray = f.nodes[id] ?? Object.values(f.nodes)[0];
     if (!xray) {
       return {
         status: 404,
         headers: projectHeaders,
-        json: { error: { code: 'NODE_NOT_FOUND', message: `Unknown node ${m.id}` } },
+        json: { error: { code: 'NODE_NOT_FOUND', message: `Unknown node ${id}` } },
       };
     }
     return { status: 200, headers: projectHeaders, json: xray };
@@ -197,15 +199,16 @@ export function handleMock(
 
   m = matchPath('/api/projects/:pid/nodes/:id/source', pathname);
   if (m && method === 'GET') {
+    const id = m.id ?? '';
     const src =
-      f.sources[m.id] ??
-      f.sources[`file:${f.nodes[m.id]?.node.filePath ?? ''}`] ??
+      f.sources[id] ??
+      f.sources[`file:${f.nodes[id]?.node.filePath ?? ''}`] ??
       Object.values(f.sources)[0];
     if (!src) {
       return {
         status: 404,
         headers: projectHeaders,
-        json: { error: { code: 'NODE_NOT_FOUND', message: `Source not found for ${m.id}` } },
+        json: { error: { code: 'NODE_NOT_FOUND', message: `Source not found for ${id}` } },
       };
     }
     return { status: 200, headers: projectHeaders, json: src };
@@ -213,12 +216,13 @@ export function handleMock(
 
   m = matchPath('/api/projects/:pid/nodes/:id/impact', pathname);
   if (m && method === 'GET') {
-    const imp = f.impact[m.id] ?? Object.values(f.impact)[0];
+    const id = m.id ?? '';
+    const imp = f.impact[id] ?? Object.values(f.impact)[0];
     if (!imp) {
       return {
         status: 404,
         headers: projectHeaders,
-        json: { error: { code: 'NODE_NOT_FOUND', message: `Impact not found for ${m.id}` } },
+        json: { error: { code: 'NODE_NOT_FOUND', message: `Impact not found for ${id}` } },
       };
     }
     return { status: 200, headers: projectHeaders, json: imp };
