@@ -128,7 +128,12 @@ export const SettingsDTO = z.object({
 export type SettingsDTO = z.infer<typeof SettingsDTO>;
 
 export const SettingsUpdate = z.object({
-  provider: ProviderConfig.nullable().optional(),
+  provider: z.discriminatedUnion('type', [
+    ProviderConfig.options[0].partial({ baseUrl: true }).extend({ apiKey: z.string().nullable().optional() }),
+    ProviderConfig.options[1].extend({ apiKey: z.string().nullable().optional() }),
+    ProviderConfig.options[2].partial({ baseUrl: true, name: true }).extend({ apiKey: z.string().nullable().optional() }),
+    ProviderConfig.options[3].partial({ binary: true }),
+  ]).nullable().optional(),
   models: z.object({ fast: z.string(), smart: z.string() }).partial().optional(),
   outputLanguage: z.enum(['en', 'tr']).optional(),
   budgetUsd: z.number().nullable().optional(),
