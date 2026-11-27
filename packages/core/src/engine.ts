@@ -1,6 +1,6 @@
 import type { AskEvent, AskRequest, DiffImpactDTO, EstimateDTO, FsBrowseDTO, IndexRequest, Lang, ProgressEvent, ProjectDTO, ProviderConfig, ProvidersDetectDTO, RunDTO, SettingsDTO, SettingsUpdate, TestProviderResult } from '@catalyst/shared';
 import type { QueryApi } from './query/types.js';
-import { CatalystError } from './errors.js';
+export { createEngine } from './runtime.js';
 
 export interface Logger {
   debug(message: string, details?: unknown): void;
@@ -52,11 +52,3 @@ export interface IndexRun {
   cancel(): void;
 }
 
-export function createEngine(_opts?: EngineOptions): Engine {
-  const pending = (): never => { throw new CatalystError('NOT_IMPLEMENTED', 'Engine implementation pending'); };
-  return {
-    projects: { list: pending, open: pending, get: pending, forget: pending },
-    settings: { get: pending, update: pending, test: pending, detect: pending },
-    isProjectDir: pending, browse: pending, close: pending,
-  };
-}
