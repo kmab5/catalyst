@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
+import { Lang } from '../contract';
 import { api } from '../client';
 import type {
   EdgeKind,
   GraphQuery,
   IndexRequest,
-  Lang,
   NodeKind,
   ProviderConfig,
   SettingsUpdate,
@@ -69,7 +70,14 @@ export function useBrowse(path?: string) {
   });
 }
 
-export function useOverview(pid: string | undefined, lang?: Lang) {
+// The server resolves the project's configured language when a link has no override.
+function useQueryLanguage(fallback?: Lang) {
+  const [params] = useSearchParams();
+  return Lang.safeParse(params.get('lang')).data ?? fallback;
+}
+
+export function useOverview(pid: string | undefined, fallback?: Lang) {
+  const lang = useQueryLanguage(fallback);
   return useQuery({
     queryKey: ['overview', pid, lang],
     queryFn: () => api.overview(pid!, lang),
@@ -77,7 +85,8 @@ export function useOverview(pid: string | undefined, lang?: Lang) {
   });
 }
 
-export function useFeatures(pid: string | undefined, lang?: Lang) {
+export function useFeatures(pid: string | undefined, fallback?: Lang) {
+  const lang = useQueryLanguage(fallback);
   return useQuery({
     queryKey: ['features', pid, lang],
     queryFn: () => api.features.list(pid!, lang),
@@ -88,8 +97,9 @@ export function useFeatures(pid: string | undefined, lang?: Lang) {
 export function useFeature(
   pid: string | undefined,
   fid: string | undefined,
-  lang?: Lang,
+  fallback?: Lang,
 ) {
+  const lang = useQueryLanguage(fallback);
   return useQuery({
     queryKey: ['feature', pid, fid, lang],
     queryFn: () => api.features.get(pid!, fid!, lang),
@@ -108,8 +118,9 @@ export function useTree(pid: string | undefined, path?: string, depth?: number) 
 export function useNode(
   pid: string | undefined,
   nodeId: string | undefined,
-  lang?: Lang,
+  fallback?: Lang,
 ) {
+  const lang = useQueryLanguage(fallback);
   return useQuery({
     queryKey: ['node', pid, nodeId, lang],
     queryFn: () => api.node(pid!, nodeId!, lang),
@@ -205,9 +216,10 @@ export function useDiffImpact(
   pid: string | undefined,
   req: { base?: string; narrative?: boolean; lang?: Lang },
 ) {
+  const lang = useQueryLanguage(req.lang);
   return useQuery({
-    queryKey: ['diff-impact', pid, req.base ?? '', req.narrative ?? true, req.lang ?? null],
-    queryFn: () => api.diffImpact(pid!, req),
+    queryKey: ['diff-impact', pid, req.base ?? '', req.narrative ?? true, lang ?? null],
+    queryFn: () => api.diffImpact(pid!, { ...req, lang }),
     enabled: Boolean(pid),
   });
 }

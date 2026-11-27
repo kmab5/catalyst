@@ -32,3 +32,22 @@ test('a structure-only project still displays the stack, entries and health', as
   expect(screen.getByText('Next.js')).toBeVisible();
   expect(screen.getByRole('heading', { name: 'Structure health' })).toBeVisible();
 });
+
+test('requests the overview in the language of the deep link', async () => {
+  const fixture = getFixture();
+  const pid = fixture.projects[0]!.id;
+  installMockFetch(fixture, {
+    [`GET /api/projects/${pid}/overview`]: (request) => {
+      const language = new URL(request.url).searchParams.get('lang');
+      return Response.json({
+        ...fixture.overview,
+        overview: {
+          ...fixture.overview.overview,
+          oneLiner: language === 'tr' ? 'Türkçe özet' : 'English overview',
+        },
+      });
+    },
+  });
+  renderPage(<Overview />, `/p/${pid}/overview?lang=tr`, '/p/:pid/overview');
+  expect(await screen.findByRole('heading', { name: 'Türkçe özet' })).toBeVisible();
+});

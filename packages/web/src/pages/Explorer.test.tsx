@@ -59,13 +59,21 @@ test('X-Ray shows the specified sections and uses the selected node for impact',
 });
 
 test('tree selection updates the URL and outline selection highlights the source range', async () => {
-  installMockFetch();
-  const router = renderPage(<Explorer />, `/p/${pid}/explorer`, '/p/:pid/:page').router;
+  const languages: (string | null)[] = [];
+  installMockFetch(fixture, {
+    [`GET /api/projects/${pid}/nodes/${encodeURIComponent(fileId)}`]: (request) => {
+      languages.push(new URL(request.url).searchParams.get('lang'));
+      return Response.json(fixture.nodes[fileId]);
+    },
+  });
+  const router = renderPage(<Explorer />, `/p/${pid}/explorer?lang=tr`, '/p/:pid/:page').router;
   fireEvent.click(await screen.findByRole('button', { name: 'lib' }));
   fireEvent.click(await screen.findByRole('button', { name: 'session.ts' }));
   expect(new URLSearchParams(router.state.location.search).get('node')).toBe(fileId);
   const outline = await screen.findByRole('navigation', { name: 'Outline' });
+  expect(new Set(languages)).toEqual(new Set(['tr']));
   fireEvent.click(within(outline).getByRole('button', { name: 'getCurrentUser' }));
+  expect(new URLSearchParams(router.state.location.search).get('lang')).toBe('tr');
   await waitFor(() => expect(document.querySelector('[data-line="5"]')).toHaveClass('line-highlight'));
   expect(new URLSearchParams(router.state.location.search).get('line')).toBe('5');
 });

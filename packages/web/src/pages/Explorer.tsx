@@ -25,7 +25,11 @@ export function Explorer() {
   const xray = useNode(pid, nodeId);
   const [dismissed, setDismissed] = useState<string>();
   function select(id: string, line?: number) {
-    setParams(line ? { node: id, line: String(line) } : { node: id });
+    const next = new URLSearchParams(params);
+    next.set('node', id);
+    if (line) next.set('line', String(line));
+    else next.delete('line');
+    setParams(next);
     setDismissed(undefined);
   }
   return (

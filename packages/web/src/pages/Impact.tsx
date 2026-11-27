@@ -228,7 +228,12 @@ export function Impact() {
       <BaseSelector
         key={base ?? ''}
         base={base}
-        compare={(ref) => setParams(ref ? { base: ref } : {})}
+        compare={(ref) => {
+          const next = new URLSearchParams(params);
+          if (ref) next.set('base', ref);
+          else next.delete('base');
+          setParams(next);
+        }}
       />
       {response.error ? (
         <ErrorCard error={response.error} onRetry={() => void response.refetch()} />

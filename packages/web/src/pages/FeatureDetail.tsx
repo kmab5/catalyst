@@ -1,7 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
-import { Lang } from '@/api/contract';
 import { useFeature, useFeatures, useGraph, useProject } from '@/api/hooks/queries';
 import { NodeIdLink } from '@/components/NodeIdLink';
 import { FeatureChip } from '@/components/FeatureChip';
@@ -20,8 +19,7 @@ export function FeatureDetail() {
   const [diagram, setDiagram] = useState(false);
   const { pid, fid } = useParams();
   const project = useProject(pid).data;
-  const [params] = useSearchParams();
-  const lang = Lang.safeParse(params.get('lang')).data ?? project?.outputLanguage;
+  const lang = project?.outputLanguage;
   const detail = useFeature(pid, fid, lang);
   const listing = useFeatures(pid, lang);
   const graph = useGraph(pid, { level: 'feature' });

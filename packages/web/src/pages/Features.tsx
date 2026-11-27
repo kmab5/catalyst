@@ -16,7 +16,7 @@ export function Features() {
   const settings = useSettings().data;
   const [params] = useSearchParams();
   const lang = Lang.safeParse(params.get('lang')).data;
-  const query = useFeatures(pid, lang ?? project?.outputLanguage);
+  const query = useFeatures(pid, project?.outputLanguage);
   if (query.isLoading) return <PageSkeleton />;
   if (query.error) return <ErrorCard error={query.error} onRetry={() => void query.refetch()} />;
   const groups = new Map<string, FeatureListItemDTO[]>();
