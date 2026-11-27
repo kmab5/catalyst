@@ -5,6 +5,7 @@ import type { ParsedFile } from '../parse/types.js';
 import type { Linked } from '../resolve/link.js';
 import { readJson } from '../resolve/ts-resolver.js';
 import type { SourceFile } from '../scan/scanner.js';
+import { isEnvTemplate } from '../scan/secrets.js';
 import { routes } from './routes.js';
 import { hosts, serviceFor } from './services.js';
 
@@ -158,7 +159,7 @@ export function detect(
     return id;
   };
   if (enabled.env !== false)
-    for (const f of files.filter((f) => /\.env\.(example|sample)$/.test(f.path)))
+    for (const f of files.filter((f) => isEnvTemplate(f.path)))
       for (const key of f.source.split('\n').filter(Boolean)) env(key, f.path);
   if (enabled.env !== false)
     for (const f of files) {

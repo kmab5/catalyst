@@ -3,7 +3,7 @@ import { readdir, readFile, lstat } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
 import { languageOf } from './languages.js';
-import { isSecretFile } from './secrets.js';
+import { isEnvTemplate, isSecretFile } from './secrets.js';
 
 export interface SourceFile {
   path: string;
@@ -25,8 +25,6 @@ export interface ScanOptions {
 }
 const builtins = [
   'node_modules/',
-  '.git/',
-  '.catalyst/',
   'dist/',
   'build/',
   'out/',
@@ -93,7 +91,7 @@ export async function scan(
     for (const entry of entries) {
       options.signal?.throwIfAborted();
       const path = posix.join(dir, entry.name);
-      if (entry.isSymbolicLink() || isSecretFile(path)) continue;
+      if (entry.isSymbolicLink() || /^(?:\.git|\.catalyst)$/i.test(entry.name) || isSecretFile(path)) continue;
       const checked = path + (entry.isDirectory() ? '/' : '');
       let excluded = false;
       for (const scope of [...rules, { dir: '', rules: override }]) {
@@ -152,7 +150,7 @@ export async function scan(
               lines.some((s) => s.length > 5000)
             )
               file.parseError = 'minified';
-            else if (/^\.env\.(example|sample)$/.test(entry.name))
+            else if (isEnvTemplate(entry.name))
               file.source = lines
                 .flatMap((s) => s.match(/^\s*(?:export\s+)?([\w]+)\s*=/)?.[1] ?? [])
                 .join('\n');
