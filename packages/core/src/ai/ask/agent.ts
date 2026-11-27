@@ -214,7 +214,11 @@ export async function* ask(
     signal.throwIfAborted();
     if (!full.trim()) throw new Error('Provider returned no text');
     const parsed = answerParts(full);
-    const checked = validateCitations(parsed.markdown, (id) => {
+    // Groq sometimes wraps an exact source ID in corner brackets.
+    const markdown = client.provider.id === 'groq'
+      ? parsed.markdown.replace(/【((?:file|dir|sym|route|db|env|pkg|svc|feature):[^【】\n]+)】/g, '[[$1]]')
+      : parsed.markdown;
+    const checked = validateCitations(markdown, (id) => {
       try {
         return (!retrieved || retrieved.has(id)) && !!q.getNode(id);
       } catch {

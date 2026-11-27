@@ -418,13 +418,13 @@ test('AI indexing preserves typographic quotes in valid provider JSON', () => {
 
 test('Groq repairs a missing Ask footer without replaying tool requests', async () => {
   const provider = new FakeProvider({
-    streams: [[{ type: 'text-delta', text: 'Session lookup uses the “user” table.' }]],
+    streams: [[{ type: 'text-delta', text: 'Session lookup uses the “user” table. 【file:lib/a.ts】' }]],
     texts: ['{"found":true}'],
   });
   Object.assign(provider, { id: 'groq', supportsStructuredOutput: false });
   const events = await collect(ask(new LLMClient(provider, db), q, { question: 'How does lookup work?' }));
   expect(events.at(-1)).toMatchObject({
-    type: 'done', answer: { found: true, markdown: 'Session lookup uses the “user” table.' },
+    type: 'done', answer: { found: true, markdown: 'Session lookup uses the “user” table. [[file:lib/a.ts]]', citations: [{ id: ref.id }] },
   });
   expect(provider.calls).toHaveLength(2);
 });
