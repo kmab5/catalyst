@@ -6,6 +6,7 @@ import { preamble } from '../prompts/shared.js';
 import type { StageContext } from './summarize.js';
 import { hash } from '../client.js';
 import { PROMPT_VERSION } from '../defaults.js';
+import { runReady } from './schedule.js';
 const sharedId = ids.feature('shared');
 const traversal = new Set([
   'handles',
@@ -185,7 +186,8 @@ export async function discover({ s, client, attempt }: StageContext) {
   });
   const modules = [...s.summaries.values()]
     .filter((r) => !('role' in r.value))
-    .map((r) => [r.value.nodeId, r.value.purpose]);
+    .map((r) => [r.value.nodeId, r.value.purpose])
+    .sort((a, b) => a[0]!.localeCompare(b[0]!));
   const anchors = s.edges.filter((e) =>
     ['handles', 'reads', 'writes', 'calls_service', 'uses_env'].includes(e.kind),
   );
@@ -213,28 +215,35 @@ export async function discover({ s, client, attempt }: StageContext) {
     400,
     Math.max(1, Math.floor((index.length * 65000) / Math.max(1, JSON.stringify(index).length))),
   );
-  const candidates: Feature[] = [];
+  const batches = Array.from({ length: Math.ceil(index.length / batchSize) }, (_, i) => i * batchSize);
+  const outputs = new Map<number, Feature[]>();
   let complete = true;
-  for (let i = 0; i < index.length; i += batchSize) {
-    const batch = index.slice(i, i + batchSize);
-    const result = await attempt('features batch ' + i, () =>
-      client.object('features', {
-        tier: 'smart',
-        schema,
-        schemaName: 'Features',
-        system:
-          preamble(s.lang) +
-          ' Map user-facing and system capabilities. Explain flows from triggers to data and services. Copy exact member and step IDs.',
-        prompt: JSON.stringify({
-          modules: JSON.stringify(modules).slice(0, 7000),
-          anchors: JSON.stringify(anchors).slice(0, 11000),
-          files: batch,
+  await runReady(
+    batches,
+    () => [],
+    client.concurrency,
+    async (i) => {
+      const batch = index.slice(i, i + batchSize);
+      const result = await attempt('features batch ' + i, () =>
+        client.object('features', {
+          tier: 'smart',
+          schema,
+          schemaName: 'Features',
+          system:
+            preamble(s.lang) +
+            ' Map user-facing and system capabilities. Explain flows from triggers to data and services. Copy exact member and step IDs.',
+          prompt: JSON.stringify({
+            modules: JSON.stringify(modules).slice(0, 7000),
+            anchors: JSON.stringify(anchors).slice(0, 11000),
+            files: batch,
+          }),
         }),
-      }),
-    );
-    if (result) candidates.push(...result.features);
-    else complete = false;
-  }
+      );
+      if (result) outputs.set(i, result.features);
+      else complete = false;
+    },
+  );
+  const candidates = batches.flatMap((i) => outputs.get(i) ?? []);
   let output = candidates;
   if (index.length > batchSize && candidates.length) {
     const compact = candidates.map((f, i) => ({

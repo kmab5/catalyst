@@ -143,53 +143,59 @@ export function fallbackCard(f: Facts, feature: Feature, lang: Lang = 'en'): Cha
     summary,
   };
 }
+import { runReady } from './schedule.js';
 export async function grade(features: Feature[], { s, client, attempt }: StageContext) {
-  for (const feature of features) {
-    const facts = changeabilityFacts(feature, features, s),
-      fallback = fallbackCard(facts, feature, s.lang),
-      levels = suggestLevels(facts);
-    const allowed = new Set([...feature.members.map((m) => m.nodeId), ...facts.topOutside]);
-    const { changeability: previous, ...bare } = feature;
-    const response = await attempt(feature.id, () =>
-      client.object('changeability', {
-        schema: Changeability,
-        schemaName: 'Changeability',
-        tier: 'smart',
-        system:
-          preamble(s.lang) +
-          ' Assess adding, changing and removing this feature. Explain any change to suggested levels using cited facts.',
-        prompt: JSON.stringify({ feature: bare, facts, suggested: levels, allowed: [...allowed] }),
-      }),
-    );
-    let card = fallback;
-    if (response) {
-      card = cleanStrings(response, (id) => allowed.has(id));
-      const order: Ease[] = ['easy', 'moderate', 'hard'];
-      for (const key of ['addEase', 'changeEase', 'removeEase'] as const) {
-        const current = order.indexOf(card[key].level),
-          baseline = order.indexOf(fallback[key].level);
-        if (Math.abs(current - baseline) > 1) {
-          card[key].level = order[baseline + Math.sign(current - baseline)]!;
-          card[key].reason += ' (adjusted)';
-        }
-      }
-      card.touchpoints = card.touchpoints.filter((id) => allowed.has(id)).slice(0, 12);
-      card.risks = card.risks
-        .slice(0, 5)
-        .map((r) => ({ ...r, nodeIds: r.nodeIds.filter((id) => allowed.has(id)) }));
-      card.couplings = fallback.couplings.map((c) => ({
-        ...c,
-        note: card.couplings.find((v) => v.featureId === c.featureId)?.note ?? '',
-      }));
-      card.citesMetrics = card.citesMetrics.filter((m) =>
-        m.nodeId
-          ? allowed.has(m.nodeId) && s.metrics.get(m.nodeId)?.[m.name] === m.value
-          : facts[m.name as keyof Facts] === m.value,
+  await runReady(
+    features,
+    () => [],
+    client.concurrency,
+    async (feature) => {
+      const facts = changeabilityFacts(feature, features, s),
+        fallback = fallbackCard(facts, feature, s.lang),
+        levels = suggestLevels(facts);
+      const allowed = new Set([...feature.members.map((m) => m.nodeId), ...facts.topOutside]);
+      const { changeability: previous, ...bare } = feature;
+      const response = await attempt(feature.id, () =>
+        client.object('changeability', {
+          schema: Changeability,
+          schemaName: 'Changeability',
+          tier: 'smart',
+          system:
+            preamble(s.lang) +
+            ' Assess adding, changing and removing this feature. Explain any change to suggested levels using cited facts.',
+          prompt: JSON.stringify({ feature: bare, facts, suggested: levels, allowed: [...allowed] }),
+        }),
       );
-    }
-    feature.changeability = card;
-    s.db
-      .prepare('UPDATE features SET json=? WHERE language=? AND id=?')
-      .run(JSON.stringify(feature), s.lang, feature.id);
-  }
+      let card = fallback;
+      if (response) {
+        card = cleanStrings(response, (id) => allowed.has(id));
+        const order: Ease[] = ['easy', 'moderate', 'hard'];
+        for (const key of ['addEase', 'changeEase', 'removeEase'] as const) {
+          const current = order.indexOf(card[key].level),
+            baseline = order.indexOf(fallback[key].level);
+          if (Math.abs(current - baseline) > 1) {
+            card[key].level = order[baseline + Math.sign(current - baseline)]!;
+            card[key].reason += ' (adjusted)';
+          }
+        }
+        card.touchpoints = card.touchpoints.filter((id) => allowed.has(id)).slice(0, 12);
+        card.risks = card.risks
+          .slice(0, 5)
+          .map((r) => ({ ...r, nodeIds: r.nodeIds.filter((id) => allowed.has(id)) }));
+        card.couplings = fallback.couplings.map((c) => ({
+          ...c,
+          note: card.couplings.find((v) => v.featureId === c.featureId)?.note ?? '',
+        }));
+        card.citesMetrics = card.citesMetrics.filter((m) =>
+          m.nodeId
+            ? allowed.has(m.nodeId) && s.metrics.get(m.nodeId)?.[m.name] === m.value
+            : facts[m.name as keyof Facts] === m.value,
+        );
+      }
+      feature.changeability = card;
+      s.db
+        .prepare('UPDATE features SET json=? WHERE language=? AND id=?')
+        .run(JSON.stringify(feature), s.lang, feature.id);
+    },
+  );
 }

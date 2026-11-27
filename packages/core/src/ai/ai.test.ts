@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, expect, test } from 'vitest';
@@ -406,4 +407,43 @@ test('Tier 3 requires opt-in, grounds symbol ranges and edges, and reuses cached
   );
   await runAiStages({ db, root, client, lang: 'en', tier3: true });
   expect(fake.calls.filter((c) => c.schemaName === 'Tier3Extraction')).toHaveLength(1);
+});
+
+test('independent file components fill provider slots while importers await dependencies', async () => {
+  fixture();
+  for (let i = 0; i < 6; i++) {
+    const path = 'lib/independent-' + i + '.ts',
+      source = 'const x=1;\nconst y=2;\nexport const sum=x+y;';
+    writeFileSync(join(root, path), source);
+    db.prepare(
+      "INSERT INTO files(path,hash,language,tier,loc,size_bytes) VALUES(?,?,'typescript',1,3,?)",
+    ).run(path, createHash('sha1').update(source).digest('hex'), source.length);
+    node('file:' + path, 'file', path);
+    edge('dir:lib', 'file:' + path, 'contains');
+  }
+  const fake = stageProvider(),
+    generate = fake.generateObject.bind(fake);
+  let active = 0,
+    peak = 0,
+    leafFinished = false;
+  fake.generateObject = async (req) => {
+    if (req.schemaName !== 'FileSummary') return generate(req);
+    if (req.prompt.startsWith('FILE lib/main.ts')) expect(leafFinished).toBe(true);
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await delay(60);
+      return await generate(req);
+    } finally {
+      active--;
+      if (req.prompt.startsWith('FILE lib/leaf.ts')) leafFinished = true;
+    }
+  };
+  const client = new LLMClient(fake, db, { concurrency: 4 });
+  const result = await runAiStages({ db, root, client, lang: 'en' });
+  expect(result.errors).toEqual([]);
+  expect(peak).toBe(4);
+  const count = fake.calls.length;
+  await runAiStages({ db, root, client, lang: 'en' });
+  expect(fake.calls).toHaveLength(count);
 });
