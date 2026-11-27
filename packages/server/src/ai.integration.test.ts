@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { AskEvent, FeatureDetailDTO, OverviewDTO, XRayDTO, ids } from '@catalyst/shared';
-import { createEngine } from '../engine.js';
-import { createApp } from '../../../server/src/app.js';
+import { createEngine } from '@catalyst/core';
+import { createApp } from './app.js';
 
-const fixture = fileURLToPath(new URL('../../../../fixtures/repos/ts-basic', import.meta.url));
+const fixture = fileURLToPath(new URL('../../../fixtures/repos/ts-basic', import.meta.url));
 const file = ids.file('app/api/webhooks/stripe/route.ts'),
   handler = ids.sym('app/api/webhooks/stripe/route.ts', 'POST'),
   route = ids.route('POST', '/api/webhooks/stripe'),
