@@ -37,7 +37,7 @@ export function LeftNav({ pid, highFlagCount = 0, providerLabel }: LeftNavProps)
 
   return (
     <aside
-      aria-label="Project navigation"
+      aria-label={t('shell.nav')}
       className="flex flex-col justify-between border-r border-[var(--border)] bg-[var(--surface)] w-14 min-[1100px]:w-52 shrink-0 py-3 px-2 select-none transition-[width] duration-150"
     >
       <nav className="flex flex-col gap-0.5">
@@ -47,6 +47,7 @@ export function LeftNav({ pid, highFlagCount = 0, providerLabel }: LeftNavProps)
             <NavLink
               key={item.to}
               to={item.to}
+              aria-label={item.label}
               title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
               className={({ isActive }) =>
                 cn(
@@ -61,7 +62,7 @@ export function LeftNav({ pid, highFlagCount = 0, providerLabel }: LeftNavProps)
               <span className="hidden min-[1100px]:inline truncate">{item.label}</span>
               {item.badge !== undefined && (
                 <span
-                  aria-label={`${item.badge} high severity flags`}
+                  aria-label={t('shell.flags', { n: item.badge })}
                   className="hidden min-[1100px]:inline-flex ml-auto items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-medium bg-[var(--sev-high-soft)] text-[var(--sev-high)]"
                 >
                   {item.badge}
@@ -80,7 +81,7 @@ export function LeftNav({ pid, highFlagCount = 0, providerLabel }: LeftNavProps)
         >
           <Settings className="h-3.5 w-3.5 shrink-0" />
           <span className="hidden min-[1100px]:inline truncate">
-            {providerLabel ? `AI: ${providerLabel}` : 'AI: Not configured'}
+            {t('shell.provider', { provider: providerLabel ?? t('shell.noProvider') })}
           </span>
         </NavLink>
       </div>

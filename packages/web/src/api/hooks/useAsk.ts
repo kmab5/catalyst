@@ -1,115 +1,105 @@
-import { useCallback, useRef, useState } from 'react';
-import { api } from '../client';
-import { AskAnswer, AskEvent, ErrorBody, type AskRequest, type Lang } from '../contract';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, reportServerGone } from '../client';
+import { AskEvent, ErrorBody, type AskAnswer, type AskRequest, type Lang } from '../contract';
 import { ApiError } from '../errors';
 import { readSseStream } from '../sse';
-import { getToken } from '../token';
+import { fetchWithToken } from '../token';
+import { t } from '@/i18n/t';
 
 export function useAsk(pid: string | undefined) {
   const [trace, setTrace] = useState<AskEvent[]>([]);
   const [text, setText] = useState('');
-  const [answer, setAnswer] = useState<AskAnswer | undefined>(undefined);
+  const [answer, setAnswer] = useState<AskAnswer>();
   const [status, setStatus] = useState<'idle' | 'streaming' | 'done' | 'error'>('idle');
-  const [error, setError] = useState<ApiError | undefined>(undefined);
-  const abortRef = useRef<AbortController | null>(null);
+  const [error, setError] = useState<ApiError>();
+  const active = useRef<AbortController | null>(null);
 
+  useEffect(
+    () => () => {
+      active.current?.abort();
+      active.current = null;
+    },
+    [pid],
+  );
   const cancel = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
+    active.current?.abort();
+    active.current = null;
     setStatus((s) => (s === 'streaming' ? 'idle' : s));
   }, []);
 
   const ask = useCallback(
     async (question: string, history?: AskRequest['history'], lang?: Lang) => {
       if (!pid || !question.trim()) return;
-      abortRef.current?.abort();
+      active.current?.abort();
       const controller = new AbortController();
-      abortRef.current = controller;
-
+      active.current = controller;
       setTrace([]);
       setText('');
       setAnswer(undefined);
       setError(undefined);
       setStatus('streaming');
-
       const headers = new Headers({ 'Content-Type': 'application/json' });
-      const tok = getToken();
-      if (tok) headers.set('X-Catalyst-Token', tok);
-
-      let res: Response;
+      let responseReceived = false;
       try {
-        res = await fetch(api.urls.ask(pid), {
+        const res = await fetchWithToken(api.urls.ask(pid), {
           method: 'POST',
           headers,
-          body: JSON.stringify({ question, history, lang }),
           signal: controller.signal,
+          body: JSON.stringify({ question, history, lang }),
         });
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        setError(
-          new ApiError(
-            'SERVER_GONE',
-            0,
-            err instanceof Error ? err.message : 'Network error',
-          ),
-        );
-        setStatus('error');
-        return;
-      }
-
-      if (!res.ok) {
-        let parsed: ErrorBody | null = null;
-        try {
-          const check = ErrorBody.safeParse(await res.json());
-          if (check.success) parsed = check.data;
-        } catch {
-          // ignore
-        }
-        setError(
-          parsed
+        responseReceived = true;
+        if (!res.ok) {
+          const body = ErrorBody.safeParse(await res.json().catch(() => null));
+          throw body.success
             ? new ApiError(
-                parsed.error.code,
+                body.data.error.code,
                 res.status,
-                parsed.error.message,
-                parsed.error.details,
+                body.data.error.message,
+                body.data.error.details,
               )
-            : new ApiError('INTERNAL', res.status, res.statusText || 'Ask failed'),
-        );
-        setStatus('error');
-        return;
-      }
-
-      try {
+            : new ApiError('INTERNAL', res.status, res.statusText);
+        }
+        let finished = false;
         await readSseStream(res, (frame) => {
-          const ev = AskEvent.parse(JSON.parse(frame.data));
-          if (ev.type === 'thinking' || ev.type === 'tool') {
-            setTrace((prev) => [...prev, ev]);
-          } else if (ev.type === 'token') {
-            setText((prev) => prev + ev.text);
-          } else if (ev.type === 'done') {
-            setAnswer(ev.answer);
-            setText(ev.answer.markdown);
-            setStatus('done');
-          } else if (ev.type === 'error') {
-            setError(new ApiError('PROVIDER_ERROR', 502, ev.message));
-            setStatus('error');
+          if (active.current !== controller || finished) return;
+          const event = AskEvent.parse(JSON.parse(frame.data));
+          switch (event.type) {
+            case 'thinking':
+            case 'tool':
+              setTrace((prev) => [...prev, event]);
+              break;
+            case 'token':
+              setText((prev) => prev + event.text);
+              break;
+            case 'done':
+              finished = true;
+              setAnswer(event.answer);
+              setText(event.answer.markdown);
+              setStatus('done');
+              break;
+            case 'error':
+              throw new ApiError('PROVIDER_ERROR', 502, event.message);
           }
         });
-        setStatus((s) => (s === 'streaming' ? 'done' : s));
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
+        if (!finished) throw new ApiError('INTERNAL', 500, t('ask.interrupted'));
+      } catch (cause) {
+        if (active.current !== controller) return;
+        if (!responseReceived) reportServerGone();
         setError(
-          new ApiError(
-            'INTERNAL',
-            500,
-            err instanceof Error ? err.message : 'Stream error',
-          ),
+          cause instanceof ApiError
+            ? cause
+            : new ApiError(
+                responseReceived ? 'INTERNAL' : 'SERVER_GONE',
+                responseReceived ? 500 : 0,
+                cause instanceof Error ? cause.message : t('ask.interrupted'),
+              ),
         );
         setStatus('error');
+      } finally {
+        if (active.current === controller) active.current = null;
       }
     },
     [pid],
   );
-
   return { ask, trace, text, answer, status, error, cancel };
 }
