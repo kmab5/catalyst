@@ -1,6 +1,7 @@
+import type { Readable } from 'node:stream';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CatalystError, type Engine, type Project } from '@catalyst/core';
+import { CatalystError, type Engine, type IndexRun, type Project } from '@catalyst/core';
 import { ids, NodeKind, Severity } from '@catalyst/shared';
 import { z } from 'zod';
 import { publicError } from './errors.js';
@@ -79,13 +80,56 @@ export function createMcpServer(project: Project) {
   });
   return server;
 }
-export async function startMcp(engine: Engine, path: string): Promise<void> {
-  const project = await engine.projects.open(path);
-  if (project.info().status === 'never-indexed') {
-    console.error('Indexing project structure…');
-    const result = await project.index({ ai: false }).done;
-    if (result.status !== 'done') throw new CatalystError('INTERNAL', 'Structural index did not complete');
+export function startMcp(engine: Engine, path: string, signal?: AbortSignal): Promise<void> {
+  return connectStdio(engine, path, process.stdin, signal);
+}
+
+export async function connectStdio(engine: Engine, path: string, input: Readable, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted || input.readableEnded || input.destroyed) return;
+  let stopped = false;
+  let run: IndexRun | undefined;
+  let server: McpServer | undefined;
+
+  // Notice an empty pipe closing during the initial index without consuming client messages.
+  const pollEnd = () => { input.read(0); };
+  function detach() {
+    input.off('readable', pollEnd);
+    input.off('end', stop);
+    input.off('close', stop);
+    input.off('error', stop);
+    signal?.removeEventListener('abort', stop);
   }
-  const server = createMcpServer(project);
-  await server.connect(new StdioServerTransport());
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    detach();
+    run?.cancel();
+    void server?.close().catch(() => {});
+  }
+
+  input.on('readable', pollEnd);
+  input.once('end', stop);
+  input.once('close', stop);
+  input.once('error', stop);
+  signal?.addEventListener('abort', stop, { once: true });
+  try {
+    const project = await engine.projects.open(path);
+    if (stopped) return;
+    if (project.info().status === 'never-indexed') {
+      console.error('Indexing project structure…');
+      run = project.index({ ai: false });
+      if (stopped) run.cancel();
+      const result = await run.done;
+      run = undefined;
+      if (stopped) return;
+      if (result.status !== 'done') throw new CatalystError('INTERNAL', 'Structural index did not complete');
+    }
+    input.off('readable', pollEnd);
+    server = createMcpServer(project);
+    server.server.onclose = detach;
+    await server.connect(new StdioServerTransport(input));
+  } catch (err) {
+    stop();
+    throw err;
+  }
 }
