@@ -16,6 +16,34 @@ The CLI prints the local URL. Open **Overview** for the detected stack, **Explor
 
 For the npm distribution, the equivalent command from a project directory is `npx catalyst-dx`.
 
+## Test locally
+
+From the checkout in PowerShell, try the bundled TypeScript fixture with Node 22 and pnpm 9.15.9:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm build
+node packages/cli/dist/index.js index fixtures/repos/ts-basic --no-ai --json
+node packages/cli/dist/index.js serve fixtures/repos/ts-basic
+```
+
+The index result should contain `"status":"done"` and `"llmCalls":0`. Open the printed URL, find `lib/session.ts` in **Explorer**, then open **Health** to see the cycle between `lib/a.ts` and `lib/b.ts`. Press **Ctrl+C** in the terminal to stop the server. The fixture's index is stored under its ignored `.catalyst/` directory.
+
+To run the automated checks after installing and building:
+
+```powershell
+pnpm typecheck
+pnpm test
+pnpm audit --audit-level=high
+pnpm --filter @catalyst/web exec playwright install chromium
+pnpm --filter @catalyst/web exec playwright test
+& "$env:ProgramFiles/Git/bin/bash.exe" scripts/e2e-smoke.sh
+```
+
+The last command uses Git for Windows. On Linux, use `bash scripts/e2e-smoke.sh` and install Chromium with `playwright install --with-deps chromium` through the same pnpm filter. The HTTP test prints `ALL VALID` and verifies fallback to a second port. Keep ports 4400 and 4401 available while running these checks. The automated suite uses fixtures and a local provider double, so an API key is optional for exploring Catalyst and unnecessary for these checks.
+
+GitHub runs the checks on pushes and pull requests targeting `dev` or `main`. A successful Linux push build also uploads the installable CLI tarball under the workflow run's **Artifacts** section. [Catalyst CI runs](https://github.com/kmab5/catalyst/actions/workflows/ci.yml)
+
 ## Indexing and AI
 
 To explore dependencies without sending code to an AI provider, run a structural index.
