@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useMatch } from 'react-router';
 import { Search, Settings, ChevronDown, Workflow } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ProjectDTO } from '@/api/contract';
@@ -98,6 +98,7 @@ export function TopBar({
   onOpenPalette: () => void;
   statusSlot?: ReactNode;
 }) {
+  const onSettings = useMatch('/settings');
   return (
     <header className="workspace-topbar flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--surface)] px-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -125,14 +126,14 @@ export function TopBar({
       )}
       <div className="flex shrink-0 items-center gap-3">
         {statusSlot}
-        <Link
+        {!onSettings && <Link
           to="/settings"
           state={project ? { projectId: project.id } : undefined}
           aria-label={t('nav.settings')}
           className="rounded p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-2)]"
         >
           <Settings size={16} />
-        </Link>
+        </Link>}
       </div>
     </header>
   );

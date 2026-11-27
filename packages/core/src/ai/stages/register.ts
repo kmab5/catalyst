@@ -1,5 +1,6 @@
 import type { Lang, Feature, ProgressEvent } from '@catalyst/shared';
 import type { Db } from '../context.js';
+import { providerHttpMessage } from '../providers/types.js';
 import { Snapshot } from '../context.js';
 import type { LLMClient } from '../client.js';
 import { summarize, rollup, type StageContext } from './summarize.js';
@@ -56,7 +57,7 @@ export async function runAiStages(options: {
             return undefined;
           }
           return await fn();
-        } catch {
+        } catch (error) {
           signal?.throwIfAborted();
           failed++;
           partial = true;
@@ -66,7 +67,7 @@ export async function runAiStages(options: {
               ' ' +
               item +
               ': ' +
-              (client.failureReason() ??
+              (client.failureReason() ?? providerHttpMessage(error, client.provider.label) ??
                 (client.budgetExceeded() ? 'Budget exceeded' : 'Item could not be generated')),
           );
           return undefined;

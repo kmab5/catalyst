@@ -31,6 +31,44 @@ test('Groq sends its own bearer key and fast model to the Groq API', async () =>
   }
 });
 
+test('Groq can continue an Ask tool call after streaming reasoning', async () => {
+  const transport = vi.fn(async (_url: RequestInfo | URL, options?: RequestInit) => {
+    const body = JSON.parse(String(options?.body));
+    const first = body.messages.at(-1).role === 'user';
+    if (!first) {
+      const assistant = body.messages.find((m: { role: string }) => m.role === 'assistant');
+      expect(assistant.tool_calls[0].id).toBe('call_1');
+      expect(assistant).not.toHaveProperty('reasoning_content');
+      expect(body.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
+    }
+    const delta = first
+      ? { reasoning: 'search', reasoning_content: 'search', tool_calls: [
+          { index: 0, id: 'call_1', type: 'function', function: { name: 'find', arguments: '{}' } },
+        ] }
+      : { content: 'Found it.' };
+    const choice = { index: 0, delta, finish_reason: first ? 'tool_calls' : 'stop' };
+    const chunk = { id: 'reply', created: 1, model: body.model, choices: [choice] };
+    return new Response('data: ' + JSON.stringify(chunk) + '\n\ndata: [DONE]\n\n', {
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+  });
+  vi.stubGlobal('fetch', transport);
+  try {
+    const provider = createProvider({ type: 'groq', apiKey: 'synthetic-groq' });
+    expect(provider.supportsStructuredOutput).toBe(false);
+    const parts = [];
+    for await (const part of provider.streamText({
+      tier: 'smart', system: 'Find a file', messages: [{ role: 'user', content: 'Find it' }],
+      tools: { find: { description: 'Find file', inputSchema: z.object({}), execute: async () => 'file:demo.ts' } },
+      maxSteps: 2,
+    })) parts.push(part);
+    expect(parts).toContainEqual({ type: 'text-delta', text: 'Found it.' });
+    expect(transport).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test('OpenRouter selects zero-cost models for both tiers by default', () => {
   const provider = createProvider({ type: 'openrouter', apiKey: 'test', baseUrl: 'https://openrouter.ai/api/v1' });
   for (const tier of ['fast', 'smart'] as const) {

@@ -1,4 +1,5 @@
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { ArrowLeft } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   useProvidersDetect,
@@ -34,6 +35,22 @@ function isLocalhostUrl(url: string): boolean {
 }
 
 export function Settings() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return (
+    <div data-testid="page-settings" className="mx-auto max-w-2xl px-6 py-8 space-y-5">
+      <button type="button" onClick={() => {
+        if (location.key === 'default') navigate('/', { replace: true });
+        else navigate(-1);
+      }} className="inline-flex items-center gap-2 rounded py-1 text-sm text-[var(--accent)]">
+        <ArrowLeft size={16} aria-hidden="true" />{t('settings.back')}
+      </button>
+      <SettingsForm />
+    </div>
+  );
+}
+
+function SettingsForm() {
   const { data: settings, isLoading, error, refetch } = useSettings();
   const { data: detected } = useProvidersDetect();
   const origin: unknown = useLocation().state?.projectId;
@@ -217,7 +234,7 @@ export function Settings() {
   ];
 
   return (
-    <div data-testid="page-settings" className="mx-auto max-w-2xl px-6 py-8 space-y-8">
+    <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">{t('settings.intro')}</p>

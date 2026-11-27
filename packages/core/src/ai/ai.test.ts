@@ -22,6 +22,7 @@ import {
   writeDeterministicFeatures,
 } from './index.js';
 import { newFeature, postProcessFeatures } from './stages/features.js';
+import { parseOutput } from './json.js';
 import { Snapshot } from './context.js';
 import type { StreamPart } from './providers/types.js';
 
@@ -408,6 +409,24 @@ test('Ask refuses an unverified negative even if a search term impersonates a st
   expect(events.at(-1)?.type).toBe('error');
   expect(events.some((e) => e.type === 'done')).toBe(false);
   expect(JSON.stringify(events)).not.toContain('Internal data');
+});
+
+test('AI indexing preserves typographic quotes in valid provider JSON', () => {
+  expect(parseOutput('{"purpose":"Look up the “user” record"}', z.object({ purpose: z.string() })))
+    .toEqual({ purpose: 'Look up the “user” record' });
+});
+
+test('Groq repairs a missing Ask footer without replaying tool requests', async () => {
+  const provider = new FakeProvider({
+    streams: [[{ type: 'text-delta', text: 'Session lookup uses the “user” table.' }]],
+    texts: ['{"found":true}'],
+  });
+  Object.assign(provider, { id: 'groq', supportsStructuredOutput: false });
+  const events = await collect(ask(new LLMClient(provider, db), q, { question: 'How does lookup work?' }));
+  expect(events.at(-1)).toMatchObject({
+    type: 'done', answer: { found: true, markdown: 'Session lookup uses the “user” table.' },
+  });
+  expect(provider.calls).toHaveLength(2);
 });
 
 test('Ask refuses a missing status and strips valid multiline metadata from streamed tokens', async () => {

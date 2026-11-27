@@ -45,6 +45,8 @@ export class SdkProvider implements LLMProvider {
     // Limit hidden reasoning on high-volume structured tasks. Other configured models keep their defaults.
     const effort = r.tier === 'fast' ? 'low' : 'medium';
     const providerOptions: NonNullable<Parameters<typeof generateText>[0]['providerOptions']> = {};
+    if (this.id === 'groq' && name.startsWith('openai/gpt-oss-'))
+      providerOptions.groq = { reasoningEffort: 'low' };
     if (knownClaude && this.id === 'openrouter') providerOptions.openrouter = {reasoning: {effort}};
     if (knownClaude && this.id === 'anthropic') providerOptions.anthropic = {effort};
     return {
@@ -80,7 +82,10 @@ export class SdkProvider implements LLMProvider {
       tools,
       stopWhen: stepCountIs(r.maxSteps ?? 1),
       abortSignal: r.signal,
-      maxRetries: 0,
+      // Retry an individual tool step before its stream opens, without replaying completed tools.
+      maxRetries: this.id === 'groq' ? 2 : 0,
+      providerOptions: this.id === 'groq' && this.modelFor(r.tier).startsWith('openai/gpt-oss-')
+        ? { groq: { reasoningEffort: 'low' } } : undefined,
       onError: () => {},
     });
     for await (const event of response.fullStream) {
@@ -98,8 +103,7 @@ export class SdkProvider implements LLMProvider {
           yield { type: 'finish', usage: usage(event.totalUsage) };
           break;
         case 'error':
-          yield { type: 'error', message: 'Provider stream failed' };
-          break;
+          throw event.error;
       }
     }
   }

@@ -31,6 +31,7 @@ export const en = {
   'settings.concurrency': 'Concurrency (1–32)',
   'settings.appearance': 'Appearance',
   'settings.saved': 'Settings saved.',
+  'settings.back': 'Back',
   'settings.activeProvider': 'Active',
   'settings.pendingProvider': 'Save this change to use {provider} for new AI requests.',
   'settings.applyProvider': 'Save provider',

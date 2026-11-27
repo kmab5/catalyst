@@ -1,6 +1,23 @@
 import type { ProviderType, TestProviderResult } from '@catalyst/shared';
 import type { z } from 'zod';
 export type ModelTier = 'fast' | 'smart';
+// Disclose the HTTP category only. Provider error bodies can contain prompts or credentials.
+export function providerHttpMessage(error: unknown, label: string): string | undefined {
+  if (!error || typeof error !== 'object') return;
+  const failure = 'lastError' in error ? error.lastError : error;
+  if (!failure || typeof failure !== 'object' || !('statusCode' in failure)) return;
+  switch (failure.statusCode) {
+    case 401:
+    case 403:
+      return label + ' rejected the credentials. Check the API key in Settings.';
+    case 413:
+      return label + ' rejected the request size. Try a narrower scope or a model with a higher token limit.';
+    case 429:
+      return label + ' reached its rate limit. Wait for the quota to reset or lower indexing concurrency in Settings.';
+    default:
+      return;
+  }
+}
 export type Models = Record<ModelTier, string>;
 export interface LLMUsage {
   inputTokens: number;

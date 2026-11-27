@@ -2,6 +2,12 @@ import { z } from 'zod';
 export function parseOutput<T>(input: unknown, schema: z.ZodType<T>): T {
   let value = input;
   if (typeof input === 'string') {
+    // Preserve typographic quotes inside valid string values.
+    try {
+      return schema.parse(coerce(JSON.parse(input), schema));
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
     const text = input.replace(/[“”]/g, '"');
     const start = text.search(/[{\[]/);
     let depth = 0,

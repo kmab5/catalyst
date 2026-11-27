@@ -1,12 +1,31 @@
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Link } from 'react-router';
 import { Settings } from './Settings';
 import { getFixture, installMockFetch } from '../test/mockFetch';
 import { renderPage } from '../test/renderPage';
 
 beforeEach(() => vi.stubGlobal('fetch', fetch));
 afterEach(() => vi.unstubAllGlobals());
+
+test('Back returns to the exact project view, including its selection', async () => {
+  installMockFetch();
+  const url = '/p/demo/explorer?node=file%3Ahello.ts';
+  const { router } = renderPage(<Link to="/settings">Settings</Link>, url, '/p/:pid/explorer', [
+    { path: '/settings', element: <Settings /> },
+  ]);
+  await userEvent.click(screen.getByRole('link', { name: 'Settings' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Back' }));
+  expect(router.state.location.pathname + router.state.location.search).toBe(url);
+});
+
+test('Back opens the launcher when Settings is opened directly', async () => {
+  installMockFetch();
+  const { router } = renderPage(<Settings />, '/settings', '/settings', [{ path: '/', element: <p>Launcher</p> }]);
+  await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+  expect(router.state.location.pathname).toBe('/');
+});
 
 test('selecting Groq replaces the previous models and saves a Groq credential', async () => {
   const fixture = getFixture();

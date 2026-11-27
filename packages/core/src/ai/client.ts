@@ -196,6 +196,7 @@ export class LLMClient {
       (this.options.promptVersion ?? (PROMPT_VERSION as Record<string, number>))[stage] ?? 1;
     const key = hash(
       this.provider.id,
+      ...(this.provider.id === 'groq' ? ['native-json-prompt-v1'] : []),
       this.provider.modelFor(r.tier),
       stage,
       version,
